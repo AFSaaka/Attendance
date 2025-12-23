@@ -12,19 +12,22 @@ if (empty($data['email']) || empty($data['password'])) {
 
 try {
     // 1. Fetch user by email
-    $stmt = $pdo->prepare("SELECT id, email, password_hash, role, uin FROM users WHERE email = ? AND is_active = TRUE");
+    $stmt = $pdo->prepare("SELECT id, email, password_hash, role, admin_level, uin FROM users WHERE email = ? AND is_active = TRUE");
     $stmt->execute([$data['email']]);
     $user = $stmt->fetch();
 
-    // 2. Verify password hash
     if ($user && password_verify($data['password'], $user['password_hash'])) {
-        // Success: Don't send the password hash back to the frontend!
-        unset($user['password_hash']);
+        unset($user['password_hash']); // Security first
 
         echo json_encode([
             "status" => "success",
-            "message" => "Login successful!",
-            "user" => $user
+            "user" => [
+                "id" => $user['id'],
+                "email" => $user['email'],
+                "role" => $user['role'],
+                "admin_level" => $user['admin_level'],
+                "uin" => $user['uin']
+            ]
         ]);
     } else {
         // Security Tip: Use a generic error message so hackers don't know if the email exists

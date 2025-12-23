@@ -4,6 +4,8 @@ import udsLogo from "./assets/udslogo.ico";
 import InputField from "./components/inputField";
 import PrimaryButton from "./components/primaryButton";
 import StudentDashboard from "./components/studentDashboard";
+import AdminDashboard from "./components/AdminDashboard";
+import CoordinatorDashboard from "./components/CoordinatorDashboard";
 
 function App() {
   const [view, setView] = useState("login");
@@ -95,7 +97,17 @@ function App() {
     <div style={wrapperStyle}>
       {/* CONDITIONAL RENDERING: Show Dashboard if user exists, else show Auth forms */}
       {user ? (
-        <StudentDashboard user={user} onLogout={handleLogout} />
+        <>
+          {user.role === "admin" && (
+            <AdminDashboard user={user} onLogout={handleLogout} />
+          )}
+          {user.role === "coordinator" && (
+            <CoordinatorDashboard user={user} onLogout={handleLogout} />
+          )}
+          {user.role === "student" && (
+            <StudentDashboard user={user} onLogout={handleLogout} />
+          )}
+        </>
       ) : (
         <div style={cardStyle}>
           <img

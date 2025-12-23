@@ -16,6 +16,7 @@ $routes = [
     'auth/register' => '../api/auth/register.php',
     'auth/login' => '../api/auth/login.php',
     'attendance/sync' => '../api/attendance/sync.php',
+    'scripts/seed_admins' => '../scripts/seed_admins.php',
 
 ];
 
