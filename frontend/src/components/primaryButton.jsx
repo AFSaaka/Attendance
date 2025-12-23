@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
 
-const PrimaryButton = ({ children, onClick, disabled, isLoading }) => {
+// Added 'type' prop to handle form submission
+const PrimaryButton = ({
+  children,
+  onClick,
+  disabled,
+  isLoading,
+  type = "button",
+}) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const style = {
@@ -27,10 +34,11 @@ const PrimaryButton = ({ children, onClick, disabled, isLoading }) => {
 
   return (
     <button
+      type={type} // Crucial for Enter key support: should be "submit" inside a form
       style={style}
       onClick={onClick}
       disabled={disabled || isLoading}
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={() => !disabled && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {isLoading ? (
