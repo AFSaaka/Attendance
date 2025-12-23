@@ -1,0 +1,7 @@
+RewriteEngine On
+# Prevent folder browsing
+Options -Indexes
+
+# Route all requests to public/index.php
+RewriteRule ^$ public/index.php [L]
+RewriteRule ^((?!public/).*)$ public/index.php?url=$1 [QSA,L]

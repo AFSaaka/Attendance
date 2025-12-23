@@ -1,0 +1,18 @@
+# Database & Secrets (CRITICAL)
+.env
+backend/.env
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build folders
+dist/
+build/
+
+# Local logs
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
