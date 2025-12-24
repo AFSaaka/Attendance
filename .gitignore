@@ -6,6 +6,9 @@ backend/.env
 node_modules/
 frontend/node_modules/
 
+# Ignore the backend dependencies
+backend/vendor/
+
 # Build folders
 dist/
 build/
