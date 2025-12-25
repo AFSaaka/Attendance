@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+
 // 2. Extract the URL
 $url = isset($_GET['url']) ? rtrim($_GET['url'], '/') : '';
 
@@ -26,6 +27,8 @@ $routes = [
     'auth/resend_otp' => '../api/auth/resend_otp.php',
     'student/get_placement' => '../api/student/get_placement.php', // ADD THIS!
     'attendance/sync' => '../api/attendance/sync.php',
+    'auth/me' => '../api/auth/me.php',
+    'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
 ];
 
 if (array_key_exists($url, $routes)) {

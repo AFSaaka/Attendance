@@ -12,7 +12,18 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 
+.spin-animation {
+  animation: spin 1s linear infinite;
+}
 a {
   font-weight: 500;
   color: #646cff;

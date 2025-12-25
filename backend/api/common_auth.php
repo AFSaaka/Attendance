@@ -1,38 +1,31 @@
 <?php
 // backend/api/common_auth.php
-ob_start(); // Prevent accidental whitespace from breaking headers
 
-// 1. Centralized CORS Policy - MUST BE AT THE VERY TOP
-$allowed_origin = "http://localhost:5173";
+// 1. Remove ob_start and CORS headers (index.php already did this!)
 
-header("Access-Control-Allow-Origin: $allowed_origin");
-header("Access-Control-Allow-Credentials: true");
-header("Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+// 2. Strict Session Security
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_only_cookies', 1);
+    ini_set('session.cookie_samesite', 'Lax');
 
-// 2. Handle Preflight OPTIONS requests immediately
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
+    session_start([
+        'cookie_lifetime' => 86400,
+        'cookie_secure' => false, // Set to true only for HTTPS production
+    ]);
 }
 
-// 3. Strict Session Security
-ini_set('session.cookie_httponly', 1);
-ini_set('session.use_only_cookies', 1);
-ini_set('session.cookie_samesite', 'Lax'); // Change to Lax for better cross-origin local dev support
-
-session_start([
-    'cookie_lifetime' => 86400,
-    'cookie_secure' => false, // Keep false for http://localhost
-]);
-
-// 4. Global Database Connection
+// 3. Global Database Connection
 require_once __DIR__ . '/../config/db.php';
 $pdo = getDB();
 
+// 4. Set global userId for use in endpoints like me.php and audit-summary.php
+$userId = $_SESSION['user_id'] ?? null;
+
 function requireLogin()
 {
-    if (!isset($_SESSION['user_id'])) {
+    global $userId; // Pull the global variable into the function scope
+    if (!$userId) {
         http_response_code(401);
         echo json_encode(["status" => "error", "message" => "Unauthorized access."]);
         exit;
