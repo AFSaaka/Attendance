@@ -18,6 +18,20 @@ const AttendanceModal = ({
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    let timer;
+    if (isSuccess) {
+      // Start a 5-second countdown to close the modal
+      timer = setTimeout(() => {
+        onClose();
+      }, 5000);
+    }
+
+    // Cleanup function: if the user manually closes the modal
+    // before the 3 seconds are up, we cancel the timer to prevent memory leaks.
+    return () => clearTimeout(timer);
+  }, [isSuccess, onClose]);
+
   if (!isOpen) return null;
 
   // --- Logic Helpers ---
@@ -55,24 +69,8 @@ const AttendanceModal = ({
     const success = await onSubmit(); // Ensure your parent function returns true on success
     if (success) {
       setIsSuccess(true);
-      // Optional: Auto-close after 5 seconds
-      setTimeout(() => onClose(), 5000);
     }
   };
-
-  useEffect(() => {
-    let timer;
-    if (isSuccess) {
-      // Start a 5-second countdown to close the modal
-      timer = setTimeout(() => {
-        onClose();
-      }, 5000);
-    }
-
-    // Cleanup function: if the user manually closes the modal
-    // before the 3 seconds are up, we cancel the timer to prevent memory leaks.
-    return () => clearTimeout(timer);
-  }, [isSuccess, onClose]);
 
   const days = [1, 2, 3, 4, 5, 6, 7];
 

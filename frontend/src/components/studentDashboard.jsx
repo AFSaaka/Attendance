@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Navbar from "./navBar";
 import Footer from "./footer";
 import axios from "../api/axios";
@@ -6,14 +6,9 @@ import DashboardHero from "./DashboardHero";
 import AttendanceModal from "./AttendanceModal";
 import {
   saveAttendanceOffline,
-  syncOfflineAttendance,
-  calculateProgress,
+  calculateProgramProgress,
 } from "../utils/attendanceUtils";
-import {
-  calculateDistance,
-  checkIsInRange,
-  calculateProgramProgress, // <--- Add this here
-} from "../utils/gpsUtils";
+import { calculateDistance, checkIsInRange } from "../utils/gpsUtils";
 import {
   User,
   MapPin,
@@ -33,153 +28,117 @@ const StudentDashboard = ({
   location = { lat: null, lng: null, error: null },
   onRefreshGPS,
 }) => {
-  const [showSuccess, setShowSuccess] = useState(false);
   const [placement, setPlacement] = useState(null);
   const [loadingPlacement, setLoadingPlacement] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [attendanceStatus, setAttendanceStatus] = useState({
-    signed: false,
-    loading: true,
-  });
   const [hasSignedToday, setHasSignedToday] = useState(false);
+
   // --- Consolidated Status Check ---
-  const checkStatus = async () => {
+  const checkStatus = useCallback(async () => {
     if (!user?.id) return;
     try {
       const response = await axios.get(
         `student/check_daily_status.php?user_id=${user.id}`
       );
-
-      // Update BOTH states to be sure
-      const signed = response.data.signed;
-      setHasSignedToday(signed);
-      setAttendanceStatus({ signed: signed, loading: false });
+      setHasSignedToday(response.data.signed);
     } catch (err) {
       console.error("Status check failed", err);
-      setAttendanceStatus({ signed: false, loading: false });
     }
-  };
+  }, [user]);
 
   useEffect(() => {
-    if (user) checkStatus();
-  }, [user]);
+    if (user) {
+      checkStatus();
+      getPlacementData();
+    }
+  }, [user, checkStatus]);
+
+  const getPlacementData = async () => {
+    try {
+      const response = await axios.get("student/get_placement");
+      if (response.data.status === "success")
+        setPlacement(response.data.placement);
+    } catch (err) {
+      if (err.response?.status === 401) onLogout();
+    } finally {
+      setLoadingPlacement(false);
+    }
+  };
 
   const handleRefreshClick = () => {
     setIsRefreshing(true);
     onRefreshGPS();
-    // Stop spinning after 1.5 seconds once the hook has had time to restart
     setTimeout(() => setIsRefreshing(false), 1500);
   };
-  useEffect(() => {
-    const checkTodayAttendance = async () => {
-      try {
-        const response = await axios.get("student/check_daily_status");
-        if (response.data.signed) {
-          setAttendanceStatus({ signed: true, loading: false });
-        } else {
-          setAttendanceStatus({ signed: false, loading: false });
-        }
-      } catch (err) {
-        console.error("Status check failed", err);
-        setAttendanceStatus({ signed: false, loading: false });
-      }
-    };
-    if (user) checkTodayAttendance();
-  }, [user]);
-  const handleAttendance = () => {
-    if (hasSignedToday) {
-      alert("You have already recorded your attendance for today!");
-      return;
-    }
 
-    if (!isInRange) {
-      alert(
-        `You are currently ${Math.round(
-          distance
-        )}m away. Move within 200m to check in.`
+  const handleAttendance = () => {
+    if (hasSignedToday) return alert("Already recorded for today!");
+    if (!isInRange)
+      return alert(
+        `Too far away (${Math.round(distance)}m). Move within 200m.`
       );
-      return;
-    }
     setIsModalOpen(true);
   };
-  // --- Attendance Action ---
+
+  // --- Optimized Submission Logic ---
   const confirmAttendanceSubmission = async () => {
     setIsSubmitting(true);
-
-    // Get our fixed Week/Day logic
     const progress = calculateProgramProgress(placement?.start_date);
 
+    const attendanceData = {
+      latitude: location.lat,
+      longitude: location.lng,
+      user_id: user?.id || user?.user_id,
+      enrollment_id: placement?.id,
+      status: "present",
+      week_number: progress.week,
+      day_number: progress.day,
+      captured_at: new Date().toISOString(),
+    };
+
     try {
-      const response = await axios.post("student/submit_attendance", {
-        latitude: location.lat, // Must match PHP key
-        longitude: location.lng, // Must match PHP key
-        user_id: user?.id || user?.user_id, // Using UUID from Auth
-        enrollment_id: placement.id, // From placement data
-        status: "present",
-        week_number: progress.week,
-        day_number: progress.day,
-      });
+      const response = await axios.post(
+        "student/submit_attendance",
+        attendanceData
+      );
 
       if (response.data.status === "success") {
-        setShowSuccess(true);
-
-        // CRITICAL: Update this state so the button disables immediately
         setHasSignedToday(true);
-        setAttendanceStatus({ signed: true, loading: false });
-
-        setTimeout(() => {
-          setIsModalOpen(false);
-          setShowSuccess(false);
-        }, 3000);
+        return true; // Tells AttendanceModal to show Success UI
       } else {
         alert(`Denied: ${response.data.message}`);
+        return false;
       }
     } catch (err) {
-      console.error("Attendance Error:", err);
-      handleSubmissionError(err);
       if (!err.response) {
+        // Device is OFFLINE
         saveAttendanceOffline(attendanceData);
-        setSuccessState(true); // Still show success UI, but maybe with an "Offline" badge
-      } else {
-        alert(err.response?.data?.message || "Submission failed");
+        setHasSignedToday(true);
+        return true; // Still return true so Modal shows "Saved Offline" success
       }
+      alert(err.response?.data?.message || "Submission failed");
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // --- Fetch Placement ---
-  useEffect(() => {
-    const getPlacementData = async () => {
-      try {
-        const response = await axios.get("student/get_placement");
-        if (response.data.status === "success")
-          setPlacement(response.data.placement);
-      } catch (err) {
-        if (err.response?.status === 401) onLogout();
-      } finally {
-        setLoadingPlacement(false);
-      }
-    };
-    getPlacementData();
-  }, [onLogout]);
-
-  const fullName = placement?.full_name || user?.name || "Student";
-  const academicLevel = placement?.level || "not found";
+  // --- Calculations ---
   const distance =
     location.lat && location.lng && placement?.community_lat
       ? calculateDistance(
           location.lat,
           location.lng,
-          parseFloat(placement.community_lat), // Ensuring it's a number
+          parseFloat(placement.community_lat),
           parseFloat(placement.community_lng)
         )
       : null;
 
-  // Determine if the button should be active
   const isInRange = checkIsInRange(distance, 200);
+  const fullName = placement?.full_name || user?.name || "Student";
+
   return (
     <div style={styles.container}>
       <Navbar onLogout={onLogout} userEmail={user?.email} />
@@ -187,7 +146,7 @@ const StudentDashboard = ({
       <main style={styles.main}>
         <DashboardHero
           fullName={loadingPlacement ? "..." : fullName}
-          academicLevel={academicLevel}
+          academicLevel={placement?.level || "N/A"}
           uin={user?.uin}
           role={user?.role}
           location={location}
@@ -204,18 +163,17 @@ const StudentDashboard = ({
         <AttendanceModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          onSubmit={confirmAttendanceSubmission}
-          location={location}
+          onSubmit={confirmAttendanceSubmission} // Returns true/false
           placement={placement}
           isSubmitting={isSubmitting}
         />
+
         <div style={styles.grid}>
           {/* Card 1: Profile */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h3 style={styles.cardTitle}>
-                <User size={24} color="#198104" />
-                Profile
+                <User size={24} color="#198104" /> Profile
               </h3>
             </div>
             <div style={styles.contentGrid}>
@@ -227,17 +185,17 @@ const StudentDashboard = ({
               <DetailRow
                 icon={<Fingerprint size={18} />}
                 label="Index Number"
-                value={placement?.index_number || user?.index_number || "N/A"}
+                value={placement?.index_number || "N/A"}
               />
               <DetailRow
                 icon={<BookOpen size={18} />}
                 label="Program"
-                value={placement?.program || "Program not set"}
+                value={placement?.program || "N/A"}
               />
               <DetailRow
                 icon={<Layers size={18} />}
-                label="Current Level"
-                value={academicLevel}
+                label="Level"
+                value={placement?.level || "N/A"}
               />
             </div>
           </div>
@@ -246,39 +204,29 @@ const StudentDashboard = ({
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h3 style={styles.cardTitle}>
-                <MapPin size={24} color="#198104" /> My Placement
+                <MapPin size={24} color="#198104" /> Placement
               </h3>
               {placement && <CheckCircle size={24} color="#198104" />}
             </div>
             <div style={styles.contentGrid}>
-              {loadingPlacement ? (
-                <p>Loading...</p>
-              ) : placement ? (
-                <>
-                  <DetailRow
-                    icon={<Navigation size={18} />}
-                    label="District"
-                    value={placement.district}
-                  />
-                  <DetailRow
-                    icon={<MapPin size={18} />}
-                    label="Community"
-                    value={placement.community}
-                  />
-                  <DetailRow
-                    icon={<Calendar size={18} />}
-                    label="Academic Year"
-                    value={placement.academic_year}
-                  />
-                  <div style={styles.statusBox}>
-                    <CheckCircle size={16} /> Verified Field Assignment
-                  </div>
-                </>
-              ) : (
-                <div style={styles.errorBox}>
-                  <Info size={20} /> No placement found.
-                </div>
-              )}
+              <DetailRow
+                icon={<Navigation size={18} />}
+                label="District"
+                value={placement?.district || "..."}
+              />
+              <DetailRow
+                icon={<MapPin size={18} />}
+                label="Community"
+                value={placement?.community || "..."}
+              />
+              <DetailRow
+                icon={<Calendar size={18} />}
+                label="Academic Year"
+                value={placement?.academic_year || "..."}
+              />
+              <div style={styles.statusBox}>
+                <CheckCircle size={16} /> Verified Field Assignment
+              </div>
             </div>
           </div>
 
@@ -288,88 +236,46 @@ const StudentDashboard = ({
               <h3 style={styles.cardTitle}>
                 <Navigation size={24} color="#0c0481" /> Live Tracker
               </h3>
-              <button
-                onClick={handleRefreshClick}
-                style={styles.refreshBtn}
-                title="Refresh GPS Signal"
-              >
+              <button onClick={handleRefreshClick} style={styles.refreshBtn}>
                 <RefreshCw
                   size={16}
                   className={isRefreshing ? "spin-animation" : ""}
                 />
               </button>
             </div>
-
             <div style={styles.contentGrid}>
               {location.error ? (
                 <div style={styles.errorBox}>{location.error}</div>
-              ) : location.lat ? (
+              ) : (
                 <>
-                  {/* --- STUDENT CURRENT LOCATION --- */}
-                  <p style={styles.sectionLabel}>Your Current Location:</p>
+                  <p style={styles.sectionLabel}>Your Location:</p>
                   <div style={styles.coordBox}>
                     <div>
-                      <small>LATITUDE</small>
+                      <small>LAT</small>
                       <br />
-                      <strong>{location.lat.toFixed(6)}</strong>
+                      <strong>{location.lat?.toFixed(6) || "0.0"}</strong>
                     </div>
                     <div style={styles.coordDivider}>
-                      <small>LONGITUDE</small>
+                      <small>LNG</small>
                       <br />
-                      <strong>{location.lng.toFixed(6)}</strong>
+                      <strong>{location.lng?.toFixed(6) || "0.0"}</strong>
                     </div>
                   </div>
-
-                  {/* --- TARGET COMMUNITY LOCATION --- */}
-                  <p style={styles.sectionLabel}>Target Community Location:</p>
-                  <div
-                    style={{
-                      ...styles.coordBox,
-                      backgroundColor: "#f0fdf4",
-                      borderColor: "#b1faa8",
-                    }}
-                  >
-                    <div>
-                      <small>LATITUDE</small>
-                      <br />
-                      <strong>
-                        {parseFloat(placement?.community_lat || 0).toFixed(6)}
-                      </strong>
-                    </div>
-                    <div style={styles.coordDivider}>
-                      <small>LONGITUDE</small>
-                      <br />
-                      <strong>
-                        {parseFloat(placement?.community_lng || 0).toFixed(6)}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* --- DISTANCE INDICATOR --- */}
                   <div
                     style={{
                       ...styles.distanceBadge,
                       backgroundColor: isInRange ? "#f0fdf4" : "#fef2f2",
                       color: isInRange ? "#166534" : "#991b1b",
-                      border: `1px solid ${isInRange ? "#b1faa8" : "#fecaca"}`,
                     }}
                   >
                     <MapPin size={16} />
                     <span>
                       {distance !== null
-                        ? `Distance: ${Math.round(distance)} meters away`
-                        : "Calculating distance..."}
+                        ? `${Math.round(distance)}m from target`
+                        : "Locating..."}
                     </span>
                   </div>
-
-                  <div style={styles.gpsBadge}>
-                    <CheckCircle size={14} /> GPS SIGNAL ENCRYPTED
-                  </div>
                 </>
-              ) : (
-                <div style={{ textAlign: "center", padding: "10px" }}>
-                  <p>Connecting...</p>
-                </div>
               )}
             </div>
           </div>
@@ -380,7 +286,6 @@ const StudentDashboard = ({
   );
 };
 
-// --- Child Component for Rows ---
 const DetailRow = ({ icon, label, value }) => (
   <div style={styles.detailRow}>
     <div style={{ marginRight: "15px", color: "#64748b" }}>{icon}</div>

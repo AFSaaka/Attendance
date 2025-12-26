@@ -10,7 +10,7 @@ export const saveAttendanceOffline = (data) => {
   const offlineRecord = {
     ...data,
     offline_id: Date.now(),
-    captured_at: new Date().toISOString(), // Critical for server-side date validation
+    captured_at: new Date().toISOString(),
     is_offline: true,
   };
 
@@ -44,12 +44,24 @@ export const syncOfflineAttendance = async () => {
 
 /**
  * Calculates current week and day based on start date
+ * FIXED: Renamed to match Dashboard import and fixed timezone bug
  */
-export const calculateProgress = (startDate) => {
-  if (!startDate) return { week: 1, day: 1 };
-  const start = new Date(startDate);
+export const calculateProgramProgress = (startDateStr) => {
+  if (!startDateStr) return { week: 1, day: 1 };
+
+  // Manual splitting prevents the 'day-drifting' timezone bug
+  const [year, month, day] = startDateStr.split("-").map(Number);
+  const start = new Date(year, month - 1, day);
+  start.setHours(0, 0, 0, 0);
+
   const now = new Date();
-  const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+  now.setHours(0, 0, 0, 0);
+
+  const diffTime = now.getTime() - start.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  // If before start date, return week 1, day 1
+  if (diffDays < 0) return { week: 1, day: 1 };
 
   return {
     week: Math.floor(diffDays / 7) + 1,
