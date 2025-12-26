@@ -1,37 +1,56 @@
 import React from "react";
-import { UserCheck, ShieldCheck, MapPin, Phone } from "lucide-react";
+import {
+  ShieldCheck,
+  MapPin,
+  Phone,
+  Mail,
+  BadgeCheck,
+  FileText,
+  CheckSquare,
+} from "lucide-react";
 
 const CoordinatorInfo = ({ profile }) => {
+  if (!profile) return null;
+
   return (
     <div style={styles.container}>
-      <div style={styles.profileHeader}>
-        <div style={styles.avatar}>{profile.full_name?.charAt(0) || "C"}</div>
-        <div>
-          <h2 style={styles.name}>
-            {profile.full_name}
-            {profile.is_email_verified && (
-              <ShieldCheck
-                size={18}
-                color="#16a34a"
-                style={{ marginLeft: "8px" }}
-              />
-            )}
-          </h2>
-          <p style={styles.email}>{profile.email}</p>
+      {/* Left Side: Profile Details */}
+      <div style={styles.leftContent}>
+        <div style={styles.avatar}>
+          {profile.full_name?.charAt(0) || "C"}
+          <div style={styles.onlineStatus} />
+        </div>
+
+        <div style={styles.textDetails}>
+          <div style={styles.nameRow}>
+            <h2 style={styles.name}>{profile.full_name}</h2>
+            <div style={styles.roleBadge}>
+              <BadgeCheck size={14} /> Coordinator
+            </div>
+          </div>
+
+          <div style={styles.metaRow}>
+            <div style={styles.metaItem}>
+              <Mail size={14} /> {profile.email}
+            </div>
+            <div style={styles.metaItem}>
+              <MapPin size={14} /> {profile.district}
+            </div>
+            <div style={styles.metaItem}>
+              <Phone size={14} /> {profile.phone_number || "No Phone"}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div style={styles.detailGrid}>
-        <div style={styles.item}>
-          <MapPin size={16} color="#64748b" />
-          <span>
-            {profile.district}, {profile.region}
-          </span>
-        </div>
-        <div style={styles.item}>
-          <Phone size={16} color="#64748b" />
-          <span>{profile.phone_number || "No Phone Linked"}</span>
-        </div>
+      {/* Right Side: Action Buttons */}
+      <div style={styles.actionGroup}>
+        <button style={styles.btnSec}>
+          <FileText size={18} /> Reports
+        </button>
+        <button style={styles.btnPri}>
+          <CheckSquare size={18} /> Bulk Approve
+        </button>
       </div>
     </div>
   );
@@ -39,52 +58,112 @@ const CoordinatorInfo = ({ profile }) => {
 
 const styles = {
   container: {
-    background: "#fff",
-    padding: "20px",
-    borderRadius: "16px",
-    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-    marginBottom: "25px",
+    // FIX: Using a professional background color to break up the white
+    background: "linear-gradient(135deg, #e0ebff 30%, #68634dff 100%)",
+    padding: "24px 30px",
+    borderRadius: "20px",
+    border: "1px solid #cbd5e1",
+    display: "flex", // Flexbox to separate left and right
+    justifyContent: "space-between",
+    alignItems: "center",
     width: "100%",
-    border: "1px solid #e2e8f0",
+    height: "25vh",
+    boxSizing: "border-box",
+    marginBottom: "30px",
   },
-  profileHeader: {
+  leftContent: {
     display: "flex",
     alignItems: "center",
-    gap: "15px",
-    marginBottom: "15px",
+    gap: "20px",
   },
   avatar: {
-    width: "50px",
-    height: "50px",
-    background: "#05be1eff",
+    position: "relative",
+    width: "60px",
+    height: "60px",
+    background: "#05be1e",
     color: "white",
-    borderRadius: "12px",
+    borderRadius: "50%", // Circular looks better with colored backgrounds
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "1.5rem",
-    fontWeight: "bold",
+    fontSize: "1.6rem",
+    fontWeight: "800",
+    boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
+  },
+  onlineStatus: {
+    position: "absolute",
+    bottom: "2px",
+    right: "2px",
+    width: "12px",
+    height: "12px",
+    backgroundColor: "#22c55e",
+    border: "2px solid #f0f7ff",
+    borderRadius: "50%",
+  },
+  nameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "6px",
   },
   name: {
     margin: 0,
-    fontSize: "1.25rem",
-    color: "#1e293b",
+    fontSize: "1.3rem",
+    color: "#0f172a",
+    fontWeight: "700",
+  },
+  roleBadge: {
     display: "flex",
     alignItems: "center",
+    gap: "4px",
+    padding: "3px 10px",
+    background: "#dcfce7",
+    color: "#15803d",
+    borderRadius: "20px",
+    fontSize: "0.7rem",
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
-  email: { margin: 0, color: "#64748b", fontSize: "0.9rem" },
-  detailGrid: {
+  metaRow: {
     display: "flex",
-    gap: "20px",
-    borderTop: "1px solid #f1f5f9",
-    paddingTop: "15px",
+    gap: "15px",
+    flexWrap: "wrap",
   },
-  item: {
+  metaItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: "#475569",
+    fontSize: "0.85rem",
+  },
+  actionGroup: {
+    display: "flex",
+    gap: "12px",
+  },
+  btnPri: {
+    background: "#05be1e",
+    color: "#fff",
+    border: "none",
+    padding: "10px 20px",
+    borderRadius: "10px",
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    fontSize: "0.85rem",
-    color: "#334155",
+    fontWeight: "600",
+    cursor: "pointer",
+    boxShadow: "0 4px 6px -1px rgba(5, 190, 30, 0.3)",
+  },
+  btnSec: {
+    background: "#fff",
+    color: "#1e293b",
+    border: "1px solid #cbd5e1",
+    padding: "10px 20px",
+    borderRadius: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontWeight: "600",
+    cursor: "pointer",
   },
 };
 

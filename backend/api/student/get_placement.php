@@ -11,18 +11,29 @@ requireLogin();
 try {
     // We use the ID directly from the secure session provided by common_auth.php
     $stmt = $pdo->prepare("
-        SELECT 
-            sr.full_name, sr.uin, sr.index_number,
-            se.program, se.level, se.region, se.district, se.community,
-            asess.description as academic_year
-        FROM students s
-        JOIN student_registry sr ON s.registry_id = sr.id
-        LEFT JOIN student_enrollments se ON sr.id = se.registry_id
-        LEFT JOIN academic_sessions asess ON se.session_id = asess.id
-        WHERE s.user_id = ?
-        LIMIT 1
-    ");
-
+    SELECT 
+        se.id,             -- THIS IS THE MISSING KEY
+        sr.full_name, 
+        sr.uin, 
+        sr.index_number,
+        se.program, 
+        se.level, 
+        se.region, 
+        se.district, 
+        se.community,
+        asess.description as academic_year,
+        c.latitude as community_lat,
+        c.longitude as community_lng,
+        c.start_date,
+        c.duration_weeks
+    FROM students s
+    JOIN student_registry sr ON s.registry_id = sr.id
+    LEFT JOIN student_enrollments se ON sr.id = se.registry_id
+    LEFT JOIN academic_sessions asess ON se.session_id = asess.id
+    LEFT JOIN communities c ON se.community = c.name
+    WHERE s.user_id = ?
+    LIMIT 1
+");
     $stmt->execute([$_SESSION['user_id']]);
     $data = $stmt->fetch(PDO::FETCH_ASSOC);
 

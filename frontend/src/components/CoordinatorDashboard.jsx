@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  Users,
-  MapPin,
-  ShieldAlert,
-  FileText,
-  CheckSquare,
-} from "lucide-react";
+import { Users, MapPin, ShieldAlert } from "lucide-react";
 import Navbar from "./navBar";
 import Footer from "./footer";
 import SummaryCard from "./SummaryCard";
@@ -77,14 +71,6 @@ const CoordinatorDashboard = ({ user, onLogout }) => {
               {/* This component will now receive the full data from your PHP JOIN query */}
               {profile && <CoordinatorInfo profile={profile} />}
             </div>
-            <div style={styles.actionGroup}>
-              <button style={styles.btnSec}>
-                <FileText size={18} /> Reports
-              </button>
-              <button style={styles.btnPri}>
-                <CheckSquare size={18} /> Bulk Approve
-              </button>
-            </div>
           </header>
 
           <div style={styles.gridStats}>
@@ -95,7 +81,7 @@ const CoordinatorDashboard = ({ user, onLogout }) => {
               color="#0c0481"
             />
             <SummaryCard
-              title="Active Today"
+              title="Active"
               value={data?.stats?.active ?? 0}
               icon={MapPin}
               color="#16a34a"
@@ -129,7 +115,7 @@ const styles = {
     width: "100%", // Force container to edges
   },
   herodiv: {
-    width: "60%",
+    width: "100%",
   },
   main: {
     flex: 1,
@@ -168,45 +154,28 @@ const styles = {
     gap: "12px",
     flexWrap: "wrap", // Ensures buttons wrap on mobile
   },
-  btnPri: {
-    background: "#079c02ff",
-    color: "#fff",
-    border: "none",
-    padding: "12px 24px",
-    borderRadius: "10px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontWeight: "600",
-    cursor: "pointer",
-    transition: "transform 0.1s ease",
-  },
-  btnSec: {
-    background: "#fff",
-    color: "#06d43aff",
-    border: "1.5px solid #1be609ff",
-    padding: "12px 24px",
-    borderRadius: "10px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
+
   contentSection: {
-    background: "#fff",
+    background: "#ffffff",
     padding: "30px",
     borderRadius: "20px",
     boxShadow: "0 4px 20px -5px rgba(0,0,0,0.05)",
-    width: "100%",
+
+    /* FIX: Controlled width and Centering */
+    width: "100%", // Full width on mobile
+    maxWidth: "1000px", // Limits width on large screens (approx 50-60%)
+    margin: "0 auto", // Centers the box horizontally
     boxSizing: "border-box",
   },
+
+  // Make sure the title centers too if you want the whole "block" centered
   sectionTitle: {
     marginTop: 0,
     marginBottom: "25px",
     fontSize: "1.2rem",
     fontWeight: "700",
     color: "#1e293b",
+    textAlign: "center", // Centers the text within the 900px box
   },
 };
 
