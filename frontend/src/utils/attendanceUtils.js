@@ -1,5 +1,5 @@
 // src/utils/attendanceUtils.js
-import axios from "axios";
+import axios from "../api/axios";
 
 /**
  * Saves attendance data to localStorage if the user is offline.
@@ -26,14 +26,37 @@ export const syncOfflineAttendance = async () => {
   const queue = JSON.parse(localStorage.getItem("pending_attendance") || "[]");
   if (queue.length === 0) return { success: true, count: 0 };
 
+  // Capture the IDs we are about to send
+  const attemptIds = queue.map((item) => item.offline_id);
+
   try {
     const response = await axios.post("student/sync_attendance", {
       records: queue,
     });
 
+    // If status is success, we clear the queue regardless of 'synced' vs 'skipped'
     if (response.data.status === "success") {
-      localStorage.removeItem("pending_attendance");
-      return { success: true, count: queue.length };
+      const currentQueue = JSON.parse(
+        localStorage.getItem("pending_attendance") || "[]"
+      );
+
+      // Only keep items that were NOT part of this sync attempt
+      // This prevents deleting items that might have been added while the sync was running
+      const remaining = currentQueue.filter(
+        (item) => !attemptIds.includes(item.offline_id)
+      );
+
+      if (remaining.length > 0) {
+        localStorage.setItem("pending_attendance", JSON.stringify(remaining));
+      } else {
+        localStorage.removeItem("pending_attendance");
+      }
+
+      return {
+        success: true,
+        count: response.data.details?.synced || 0,
+        skipped: response.data.details?.skipped || 0,
+      };
     }
     return { success: false, message: response.data.message };
   } catch (err) {

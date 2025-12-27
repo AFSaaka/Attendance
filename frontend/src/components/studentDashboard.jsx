@@ -6,6 +6,7 @@ import DashboardHero from "./DashboardHero";
 import AttendanceModal from "./AttendanceModal";
 import {
   saveAttendanceOffline,
+  syncOfflineAttendance, // <--- Add this specifically
   calculateProgramProgress,
 } from "../utils/attendanceUtils";
 import { calculateDistance, checkIsInRange } from "../utils/gpsUtils";
@@ -47,7 +48,29 @@ const StudentDashboard = ({
       console.error("Status check failed", err);
     }
   }, [user]);
+  // Add this effect inside your StudentDashboard component
+  useEffect(() => {
+    const runSync = async () => {
+      console.log("Checking for offline records to sync...");
+      const result = await syncOfflineAttendance();
 
+      if (result.success && result.count > 0) {
+        console.log(`Successfully synced ${result.count} records.`);
+        // Refresh the UI status since we just uploaded new data
+        checkStatus();
+      }
+    };
+
+    // Scenario 1: Run when the dashboard first loads
+    runSync();
+
+    // Scenario 2: Run whenever the browser goes from 'offline' to 'online'
+    window.addEventListener("online", runSync);
+
+    return () => {
+      window.removeEventListener("online", runSync);
+    };
+  }, [checkStatus]);
   useEffect(() => {
     if (user) {
       checkStatus();

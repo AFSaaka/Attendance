@@ -15,28 +15,39 @@ if (!$user_id || empty($records)) {
 
 $results = [
     "synced" => 0,
+    "skipped" => 0,
     "failed" => 0,
     "errors" => []
 ];
 
 try {
-    // Prepare the SQL once for performance
+    // 1. Added 'synced' column to the INSERT list
+    // 2. Added 'ON CONFLICT' update to ensure it's marked as synced even if previously skipped
     $sql = "INSERT INTO public.attendance_records (
                 user_id, enrollment_id, attendance_date, 
                 status, latitude, longitude, 
-                week_number, day_number, location_geom
+                week_number, day_number, location_geom,
+                synced 
             ) VALUES (
                 :uid, :eid, :captured_date, 
                 :status, :lat::numeric, :lng::numeric, 
                 :week, :day, 
-                ST_SetSRID(ST_MakePoint(:lng_geom::double precision, :lat_geom::double precision), 4326)
-            ) ON CONFLICT (user_id, enrollment_id, attendance_date) DO NOTHING";
+                ST_SetSRID(ST_MakePoint(:lng_geom::double precision, :lat_geom::double precision), 4326),
+                TRUE
+            ) 
+            ON CONFLICT (user_id, enrollment_id, attendance_date) 
+            DO UPDATE SET 
+                status = EXCLUDED.status,
+                latitude = EXCLUDED.latitude,
+                longitude = EXCLUDED.longitude,
+                location_geom = EXCLUDED.location_geom,
+                synced = TRUE,
+                updated_at = CURRENT_TIMESTAMP";
 
     $stmt = $pdo->prepare($sql);
 
     foreach ($records as $record) {
         try {
-            // Use the captured date from the offline record, not the current server time
             $capturedDate = date('Y-m-d', strtotime($record['captured_at']));
 
             $stmt->execute([
@@ -52,11 +63,11 @@ try {
                 'lat_geom' => $record['latitude']
             ]);
 
+            // With DO UPDATE, rowCount() returns 1 for new insert, 2 for update
             if ($stmt->rowCount() > 0) {
                 $results['synced']++;
             } else {
-                // If rowCount is 0, it means the ON CONFLICT triggered (already exists)
-                $results['failed']++;
+                $results['skipped']++;
             }
         } catch (Exception $e) {
             $results['failed']++;
@@ -66,7 +77,7 @@ try {
 
     echo json_encode([
         "status" => "success",
-        "message" => "Sync complete. {$results['synced']} records added, {$results['failed']} skipped/failed.",
+        "message" => "Sync complete. {$results['synced']} updated/added, {$results['skipped']} skipped.",
         "details" => $results
     ]);
 

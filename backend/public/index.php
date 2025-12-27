@@ -32,6 +32,7 @@ $routes = [
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
     'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
+    'coordinator/get_attendance' => '../api/coordinator/get_attendance.php',
 ];
 
 if (array_key_exists($url, $routes)) {
