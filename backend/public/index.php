@@ -25,6 +25,10 @@ $routes = [
     'auth/login' => '../api/auth/login.php',
     'auth/verify_otp' => '../api/auth/verify_otp.php',
     'auth/resend_otp' => '../api/auth/resend_otp.php',
+    'admin/stats' => '../api/admin/get-admin-stats.php',
+    'admin/add-student' => '../api/admin/add-student.php',
+    'admin/bulk-upload' => '../api/admin/bulk-upload.php',
+     'admin/bulk-upload-coordinators' => '../api/admin/bulk-upload-coordinators.php',
     'student/get_placement' => '../api/student/get_placement.php', // ADD THIS!
     'student/submit_attendance' => '../api/student/submit_attendance.php',
     'student/check_daily_status' => '../api/student/check_daily_status.php',
@@ -33,6 +37,8 @@ $routes = [
     'auth/me' => '../api/auth/me.php',
     'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
     'coordinator/get_attendance' => '../api/coordinator/get_attendance.php',
+    'coordinator/get-communities' => '../api/coordinator/get-communities.php',
+    'coordinator/set-community-start-date' => '../api/coordinator/set-community-start-date.php',
 ];
 
 if (array_key_exists($url, $routes)) {

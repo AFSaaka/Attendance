@@ -22,7 +22,7 @@ if (empty($data['email']) || empty($data['password'])) {
 
 try {
     $stmt = $pdo->prepare("
-        SELECT id, email, password_hash, role, admin_level, uin, device_fingerprint, is_email_verified 
+        SELECT id, user_name, email, password_hash, role, admin_level, uin, device_fingerprint, is_email_verified 
         FROM users 
         WHERE email = ? AND is_active = TRUE
     ");
@@ -77,6 +77,7 @@ try {
             "status" => "success",
             "user" => [
                 "email" => $user['email'],
+                "user_name" => $user['user_name'],
                 "role" => $user['role'],
                 "uin" => $user['uin'],
                 "admin_level" => $user['admin_level']

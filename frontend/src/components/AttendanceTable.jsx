@@ -2,17 +2,18 @@ import React, { useState, useMemo } from "react";
 import {
   AlertCircle,
   CheckCircle,
+  Clock, // Added missing import
+  XCircle, // Added missing import
   ChevronDown,
   ChevronRight,
   Search,
-  X, // Added for clearing search
+  X,
 } from "lucide-react";
 
 const AttendanceTable = ({ data = [], loading }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedCommunities, setExpandedCommunities] = useState({});
 
-  // 1. Group and Filter Logic
   const groupedData = useMemo(() => {
     const safeData = Array.isArray(data) ? data : [];
     const term = searchTerm.toLowerCase();
@@ -38,7 +39,7 @@ const AttendanceTable = ({ data = [], loading }) => {
 
   const clearSearch = () => {
     setSearchTerm("");
-    setExpandedCommunities({}); // Optional: collapse all when clearing
+    setExpandedCommunities({});
   };
 
   if (loading)
@@ -46,7 +47,6 @@ const AttendanceTable = ({ data = [], loading }) => {
 
   return (
     <div style={styles.wrapper}>
-      {/* Quick Search Header with Clear Button */}
       <div style={styles.searchBar}>
         <Search size={18} style={{ color: "#94a3b8" }} />
         <input
@@ -75,13 +75,11 @@ const AttendanceTable = ({ data = [], loading }) => {
         )}
 
         {Object.entries(groupedData).map(([community, students]) => {
-          // AUTO-OPEN LOGIC:
-          // If the user is typing (searchTerm exists), force the section open.
-          // Otherwise, use the manually toggled state.
           const isExpanded =
             searchTerm.length > 0 || expandedCommunities[community];
-
-          const alertCount = students.filter((s) => s.distance > 200).length;
+          const alertCount = students.filter(
+            (s) => s.distance > 200 && s.status !== "not yet"
+          ).length;
 
           return (
             <div key={community} style={styles.section}>
@@ -127,12 +125,17 @@ const AttendanceTable = ({ data = [], loading }) => {
                             </div>
                           </td>
                           <td style={styles.td}>
-                            {item.distance === "N/A"
-                              ? "N/A"
+                            {/* Improved Distance display logic */}
+                            {item.status === "not yet"
+                              ? "—"
                               : `${Number(item.distance || 0).toFixed(0)}m`}
                           </td>
                           <td style={styles.td}>
-                            <StatusBadge distance={item.distance} />
+                            {/* FIXED: Passing both status and distance */}
+                            <StatusBadge
+                              status={item.status}
+                              distance={item.distance}
+                            />
                           </td>
                         </tr>
                       ))}
@@ -147,32 +150,62 @@ const AttendanceTable = ({ data = [], loading }) => {
     </div>
   );
 };
-// StatusBadge component remains the same...
 
-const StatusBadge = ({ distance }) => {
-  const isOut = distance > 200; // 200m Threshold
+const StatusBadge = ({ status, distance }) => {
+  if (status === "not yet") {
+    return (
+      <span
+        style={{
+          ...styles.badgeBase,
+          backgroundColor: "#f1f5f9",
+          color: "#64748b",
+        }}
+      >
+        <Clock size={14} /> Not Yet
+      </span>
+    );
+  }
+
+  if (status === "absent") {
+    return (
+      <span
+        style={{
+          ...styles.badgeBase,
+          backgroundColor: "#fee2e2",
+          color: "#991b1b",
+        }}
+      >
+        <XCircle size={14} /> Absent
+      </span>
+    );
+  }
+
+  const isOffSite = distance > 200;
   return (
     <span
       style={{
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "bold",
-        backgroundColor: isOut ? "#fee2e2" : "#dcfce7",
-        color: isOut ? "#991b1b" : "#166534",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px",
+        ...styles.badgeBase,
+        backgroundColor: isOffSite ? "#fee2e2" : "#dcfce7",
+        color: isOffSite ? "#991b1b" : "#166534",
       }}
     >
-      {isOut ? <AlertCircle size={14} /> : <CheckCircle size={14} />}
-      {isOut ? "Off-Site" : "On-Site"}
+      {isOffSite ? <AlertCircle size={14} /> : <CheckCircle size={14} />}
+      {isOffSite ? "Off-Site" : "On-Site"}
     </span>
   );
 };
 
 const styles = {
   wrapper: { display: "flex", flexDirection: "column", gap: "15px" },
+  badgeBase: {
+    padding: "4px 12px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: "bold",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+  },
   searchBar: {
     display: "flex",
     alignItems: "center",
@@ -187,7 +220,7 @@ const styles = {
   },
   input: { border: "none", outline: "none", width: "100%", fontSize: "14px" },
   section: {
-    background: "#ffffffff",
+    background: "#fff",
     borderRadius: "8px",
     marginBottom: "8px",
     overflow: "hidden",
@@ -200,8 +233,8 @@ const styles = {
     padding: "12px 15px",
     cursor: "pointer",
     background: "#fff",
-    transition: "background 0.2s",
   },
+  headerLeft: { display: "flex", alignItems: "center" },
   communityName: { fontWeight: "600", color: "#1e293b", marginLeft: "8px" },
   badge: {
     fontSize: "12px",
@@ -222,7 +255,10 @@ const styles = {
   tableWrapper: { borderTop: "1px solid #f1f5f9" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
   headerRow: { background: "#f8fafc", textAlign: "left", color: "#64748b" },
+  th: { padding: "10px 15px" },
   row: { borderBottom: "1px solid #f8fafc" },
+  td: { padding: "10px 15px" },
   subText: { fontSize: "11px", color: "#94a3b8" },
 };
+
 export default AttendanceTable;
