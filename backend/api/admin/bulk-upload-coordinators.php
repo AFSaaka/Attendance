@@ -6,36 +6,63 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
 
+header("Content-Type: application/json");
+
+if (!isset($_FILES['coordinator_file'])) {
+    http_response_code(400);
+    echo json_encode(["error" => "No file uploaded"]);
+    exit;
+}
+
 $filePath = $_FILES['coordinator_file']['tmp_name'];
-$extension = strtolower(pathinfo($_FILES['coordinator_file']['name'], PATHINFO_EXTENSION));
 
 try {
     $pdo->beginTransaction();
-    $rows = ($extension === 'xlsx') ? SimpleXLSX::parse($filePath)->rows() : [];
-    if ($extension === 'csv') { /* Add CSV logic here similar to students */ }
     
-    array_shift($rows); // Skip header: name, email, district, region
+    if ($xlsx = SimpleXLSX::parse($filePath)) {
+        $rows = $xlsx->rows();
+        array_shift($rows); // Skip header: [full_name, email, phone_number, region, district]
 
-    foreach ($rows as $row) {
-        [$name, $email, $district, $region] = $row;
-        if (empty($email)) continue;
+        $count = 0;
+        foreach ($rows as $row) {
+            if (count($row) < 5 || empty($row[1])) continue;
 
-        // 1. Create User Account
-        $password = password_hash("TTFPP2025", PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare("INSERT INTO public.users (email, password, role, user_name) 
-                               VALUES (?, ?, 'coordinator', ?) RETURNING id");
-        $stmt->execute([$email, $password, $name]);
-        $user_id = $stmt->fetchColumn();
+            [$name, $email, $phone, $region, $district] = $row;
 
-        // 2. Create Coordinator Profile
-        $stmt = $pdo->prepare("INSERT INTO public.coordinators (user_id, district, region) VALUES (?, ?, ?)");
-        $stmt->execute([$user_id, $district, $region]);
+            // 1. Generate OTP Security Data
+            $otp = (string)rand(100000, 999999);
+            $hashedOtp = password_hash($otp, PASSWORD_DEFAULT);
+            $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+
+            // 2. Insert into Users Table (Account)
+            $stmtUser = $pdo->prepare("
+                INSERT INTO public.users 
+                (email, password_hash, role, user_name, otp_code, otp_expires_at, must_reset_password, is_email_verified) 
+                VALUES (?, ?, 'coordinator', ?, ?, ?, true, false)
+                RETURNING id
+            ");
+            $stmtUser->execute([$email, $hashedOtp, $name, $otp, $expiresAt]);
+            $userId = $stmtUser->fetchColumn();
+
+            // 3. Insert into Coordinators Table (Profile)
+            $stmtCoord = $pdo->prepare("
+                INSERT INTO public.coordinators 
+                (user_id, full_name, region, district, phone_number) 
+                VALUES (?, ?, ?, ?, ?)
+            ");
+            $stmtCoord->execute([$userId, $name, $region, $district, $phone]);
+
+            $count++;
+        }
+
+        $pdo->commit();
+        echo json_encode(["status" => "success", "count" => $count]);
+    } else {
+        throw new Exception(SimpleXLSX::parseError());
     }
 
-    $pdo->commit();
-    echo json_encode(["status" => "success", "count" => count($rows)]);
 } catch (Exception $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
     echo json_encode(["error" => $e->getMessage()]);
 }

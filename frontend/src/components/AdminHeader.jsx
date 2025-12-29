@@ -6,7 +6,7 @@ import {
   UserPlus,
   Users,
   MapPin,
-  ShieldPlus,
+  ShieldPlus, // Ensure this is imported
 } from "lucide-react";
 
 const AdminHeader = ({ user, onAction }) => {
@@ -23,8 +23,7 @@ const AdminHeader = ({ user, onAction }) => {
             <Mail size={14} /> <span>{user?.email}</span>
           </div>
           <div style={styles.badgeAccent}>
-            <Shield size={14} />{" "}
-            <span>{user?.admin_level || "Super Admin"}</span>
+            <Shield size={14} /> <span>{user?.admin_level || "admin"}</span>
           </div>
         </div>
       </div>
@@ -52,13 +51,17 @@ const AdminHeader = ({ user, onAction }) => {
         >
           <MapPin size={20} />
         </button>
-        <button
-          style={styles.btnPri}
-          onClick={() => onAction("admin")}
-          title="Add Administrator"
-        >
-          <ShieldPlus size={20} />
-        </button>
+
+        {/* PROTECTED: Changed headerStyles to styles and used btnPri to match your style object */}
+        {user?.admin_level === "super_admin" && (
+          <button
+            onClick={() => onAction("admin")}
+            style={styles.btnPri}
+            title="Add System Admin"
+          >
+            <ShieldPlus size={20} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -66,7 +69,6 @@ const AdminHeader = ({ user, onAction }) => {
 
 const styles = {
   container: {
-    // Professional background with a subtle gradient
     background: "linear-gradient(135deg, #037e22ff 0%, #515352ff 100%)",
     padding: "50px",
     borderRadius: "16px",
@@ -77,11 +79,7 @@ const styles = {
     marginBottom: "30px",
     boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
   },
-  leftSide: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-  },
+  leftSide: { display: "flex", flexDirection: "column", gap: "10px" },
   title: {
     color: "#ffffffff",
     margin: 0,
@@ -89,11 +87,7 @@ const styles = {
     fontWeight: "800",
     letterSpacing: "-0.025em",
   },
-  infoRow: {
-    display: "flex",
-    gap: "10px",
-    flexWrap: "wrap",
-  },
+  infoRow: { display: "flex", gap: "10px", flexWrap: "wrap" },
   badge: {
     display: "flex",
     alignItems: "center",
@@ -129,11 +123,7 @@ const styles = {
     fontWeight: "600",
     border: "1px solid #fef08a",
   },
-
-  actionGroup: {
-    display: "flex",
-    gap: "10px",
-  },
+  actionGroup: { display: "flex", gap: "10px" },
   btn: {
     background: "#ffffffff",
     color: "#05850fff",
@@ -144,7 +134,6 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    transition: "transform 0.1s ease",
     boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
   },
   btnPri: {

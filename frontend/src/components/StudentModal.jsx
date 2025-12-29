@@ -5,13 +5,15 @@ import {
   FileSpreadsheet,
   Upload,
   AlertCircle,
+  CheckCircle,
+  Loader2,
 } from "lucide-react";
 import axios from "../api/axios";
 
 const StudentModal = ({ isOpen, onClose, onRefresh }) => {
-  // Mode state: 'bulk' or 'individual'
   const [mode, setMode] = useState("bulk");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState({ type: null, message: "" }); // { type: 'success' | 'error', message: '' }
   const [file, setFile] = useState(null);
   const [formData, setFormData] = useState({
     uin: "",
@@ -24,27 +26,52 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
     level: "Level 100",
   });
 
+  const clearStatus = () => setStatus({ type: null, message: "" });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    clearStatus();
 
     try {
       if (mode === "individual") {
         await axios.post("/admin/add-student", formData);
-        alert("Student registered and enrolled successfully!");
+        setStatus({
+          type: "success",
+          message: "Student registered and enrolled successfully!",
+        });
+        // Reset form on success
+        setFormData({
+          uin: "",
+          index_number: "",
+          full_name: "",
+          program: "",
+          region: "",
+          district: "",
+          community: "",
+          level: "Level 100",
+        });
       } else {
-        if (!file) throw new Error("Please select a CSV file first.");
+        if (!file) throw new Error("Please select a file first.");
         const data = new FormData();
         data.append("student_file", file);
         const res = await axios.post("/admin/bulk-upload", data, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        alert(`Success! ${res.data.count || ""} Students processed.`);
+        setStatus({
+          type: "success",
+          message: `Success! ${res.data.count || ""} Students processed.`,
+        });
+        setFile(null);
       }
-      onRefresh();
-      onClose();
+
+      if (onRefresh) onRefresh();
+      // We don't onClose() automatically anymore so the user can see the success state
     } catch (err) {
-      alert(err.response?.data?.error || err.message || "Operation failed");
+      setStatus({
+        type: "error",
+        message: err.response?.data?.error || err.message || "Operation failed",
+      });
     } finally {
       setLoading(false);
     }
@@ -66,21 +93,46 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
             <h3 style={{ margin: 0 }}>Student Management</h3>
           </div>
           <X
-            onClick={onClose}
+            onClick={() => {
+              clearStatus();
+              onClose();
+            }}
             style={{ cursor: "pointer", color: "#64748b" }}
           />
         </div>
 
+        {/* Status Messages */}
+        {status.type && (
+          <div
+            style={
+              status.type === "success" ? styles.successBar : styles.errorBar
+            }
+          >
+            {status.type === "success" ? (
+              <CheckCircle size={18} />
+            ) : (
+              <AlertCircle size={18} />
+            )}
+            <span>{status.message}</span>
+          </div>
+        )}
+
         {/* Mode Toggle Tabs */}
         <div style={styles.tabContainer}>
           <button
-            onClick={() => setMode("bulk")}
+            onClick={() => {
+              setMode("bulk");
+              clearStatus();
+            }}
             style={mode === "bulk" ? styles.activeTab : styles.tab}
           >
             Bulk Upload
           </button>
           <button
-            onClick={() => setMode("individual")}
+            onClick={() => {
+              setMode("individual");
+              clearStatus();
+            }}
             style={mode === "individual" ? styles.activeTab : styles.tab}
           >
             Individual Entry
@@ -89,7 +141,6 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
 
         <form onSubmit={handleSubmit} style={styles.form}>
           {mode === "bulk" ? (
-            /* BULK UPLOAD UI */
             <div style={styles.bulkSection}>
               <div style={styles.infoBox}>
                 <AlertCircle size={18} />
@@ -105,7 +156,10 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
                   type="file"
                   accept=".csv, .xlsx, .xls"
                   hidden
-                  onChange={(e) => setFile(e.target.files[0])}
+                  onChange={(e) => {
+                    clearStatus();
+                    setFile(e.target.files[0]);
+                  }}
                 />
                 <p>
                   {file
@@ -115,7 +169,6 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
               </label>
             </div>
           ) : (
-            /* INDIVIDUAL ENTRY UI (Your existing code) */
             <div style={styles.individualSection}>
               <label style={styles.label}>Full Name</label>
               <input
@@ -175,7 +228,6 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
                   >
                     <option value="Level 100">100</option>
                     <option value="Level 200">200</option>
-                    <option value="Level 300">300</option>
                   </select>
                 </div>
               </div>
@@ -219,11 +271,17 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
           )}
 
           <button type="submit" style={styles.submitBtn} disabled={loading}>
-            {loading
-              ? "Processing..."
-              : mode === "bulk"
-              ? "Upload & Enroll All"
-              : "Register Student"}
+            {loading ? (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <Loader2 size={18} className="animate-spin" /> Processing...
+              </div>
+            ) : mode === "bulk" ? (
+              "Upload & Enroll All"
+            ) : (
+              "Register Student"
+            )}
           </button>
         </form>
       </div>
@@ -232,6 +290,7 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
 };
 
 const styles = {
+  // ... existing styles ...
   overlay: {
     position: "fixed",
     top: 0,
@@ -251,6 +310,8 @@ const styles = {
     borderRadius: "20px",
     width: "650px",
     boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+    maxHeight: "90vh",
+    overflowY: "auto",
   },
   header: {
     display: "flex",
@@ -258,6 +319,33 @@ const styles = {
     alignItems: "center",
     marginBottom: "15px",
   },
+
+  // Status Bars
+  successBar: {
+    padding: "12px 16px",
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    borderRadius: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+    marginBottom: "15px",
+    border: "1px solid #bbf7d0",
+  },
+  errorBar: {
+    padding: "12px 16px",
+    backgroundColor: "#fee2e2",
+    color: "#991b1b",
+    borderRadius: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+    marginBottom: "15px",
+    border: "1px solid #fecaca",
+  },
+
   tabContainer: {
     display: "flex",
     gap: "10px",
@@ -331,6 +419,8 @@ const styles = {
     fontWeight: "700",
     cursor: "pointer",
     marginTop: "10px",
+    display: "flex",
+    justifyContent: "center",
   },
 };
 

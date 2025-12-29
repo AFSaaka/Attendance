@@ -1,46 +1,75 @@
 import React, { useState } from "react";
-import {
-  X,
-  UserCheck,
-  FileSpreadsheet,
-  Upload,
-  AlertCircle,
-  Shield,
-} from "lucide-react";
+import { X, CheckCircle, AlertCircle, Loader2, Upload } from "lucide-react";
 import axios from "../api/axios";
 
 const CoordinatorModal = ({ isOpen, onClose, onRefresh }) => {
-  const [mode, setMode] = useState("bulk");
-  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("bulk"); // 'bulk' or 'single'
   const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState({ type: null, message: "" }); // { type: 'success' | 'error', message: '' }
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
-    district: "",
+    phone_number: "",
     region: "",
+    district: "",
   });
 
-  const handleSubmit = async (e) => {
+  const clearStatus = () => setStatus({ type: null, message: "" });
+
+  const handleBulkUpload = async (e) => {
     e.preventDefault();
+    if (!file) return;
+
     setLoading(true);
+    clearStatus();
+    const data = new FormData();
+    data.append("coordinator_file", file);
 
     try {
-      if (mode === "individual") {
-        await axios.post("/admin/add-coordinator", formData);
-        alert("Coordinator account created successfully!");
-      } else {
-        if (!file) throw new Error("Please select an Excel/CSV file.");
-        const data = new FormData();
-        data.append("coordinator_file", file);
-        const res = await axios.post("/admin/bulk-upload-coordinators", data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        alert(`Success! ${res.data.count} Coordinators registered.`);
-      }
-      onRefresh();
-      onClose();
+      const res = await axios.post("/admin/bulk-upload-coordinators", data);
+      setStatus({
+        type: "success",
+        message: `Successfully uploaded ${res.data.count} coordinators!`,
+      });
+      setFile(null);
+      if (onRefresh) onRefresh();
     } catch (err) {
-      alert(err.response?.data?.error || err.message || "Operation failed");
+      setStatus({
+        type: "error",
+        message:
+          err.response?.data?.error ||
+          "Failed to upload file. Please check format.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSingleAdd = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    clearStatus();
+
+    try {
+      await axios.post("/admin/add-coordinator", formData);
+      setStatus({
+        type: "success",
+        message: "Coordinator added successfully!",
+      });
+      setFormData({
+        full_name: "",
+        email: "",
+        phone_number: "",
+        region: "",
+        district: "",
+      });
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err.response?.data?.error || "Failed to add coordinator.",
+      });
     } finally {
       setLoading(false);
     }
@@ -52,112 +81,85 @@ const CoordinatorModal = ({ isOpen, onClose, onRefresh }) => {
     <div style={styles.overlay}>
       <div style={styles.modal}>
         <div style={styles.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Shield color="#198104" size={24} />
-            <h3 style={{ margin: 0 }}>Coordinator Management</h3>
+          <h2>Add Coordinators</h2>
+          <button
+            onClick={() => {
+              clearStatus();
+              onClose();
+            }}
+            style={styles.closeBtn}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Status Messages */}
+        {status.type && (
+          <div
+            style={
+              status.type === "success" ? styles.successBar : styles.errorBar
+            }
+          >
+            {status.type === "success" ? (
+              <CheckCircle size={18} />
+            ) : (
+              <AlertCircle size={18} />
+            )}
+            <span>{status.message}</span>
           </div>
-          <X
-            onClick={onClose}
-            style={{ cursor: "pointer", color: "#64748b" }}
-          />
-        </div>
+        )}
 
-        <div style={styles.tabContainer}>
+        <div style={styles.tabNav}>
           <button
-            onClick={() => setMode("bulk")}
-            style={mode === "bulk" ? styles.activeTab : styles.tab}
+            style={activeTab === "bulk" ? styles.activeTab : styles.tab}
+            onClick={() => {
+              setActiveTab("bulk");
+              clearStatus();
+            }}
           >
-            Bulk Upload
+            Bulk Upload (Excel)
           </button>
           <button
-            onClick={() => setMode("individual")}
-            style={mode === "individual" ? styles.activeTab : styles.tab}
+            style={activeTab === "single" ? styles.activeTab : styles.tab}
+            onClick={() => {
+              setActiveTab("single");
+              clearStatus();
+            }}
           >
-            Individual Entry
+            Single Entry
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          {mode === "bulk" ? (
-            <div style={styles.bulkSection}>
-              <div style={styles.infoBox}>
-                <AlertCircle size={18} />
-                <span>
-                  Format: <b>full_name, email, district, region</b> (Password
-                  defaults to TTFPP2025)
-                </span>
-              </div>
-              <label style={styles.dropZone}>
-                <Upload size={32} color="#94a3b8" />
+        <div style={styles.content}>
+          {activeTab === "bulk" ? (
+            <form onSubmit={handleBulkUpload} style={styles.form}>
+              <div style={styles.uploadArea}>
+                <Upload size={32} color="#64748b" />
+                <p>Select Coordinator Excel File (.xlsx)</p>
                 <input
                   type="file"
-                  accept=".csv, .xlsx"
-                  hidden
+                  accept=".xlsx"
                   onChange={(e) => setFile(e.target.files[0])}
+                  required
                 />
-                <p>
-                  {file ? file.name : "Select Coordinator List (Excel/CSV)"}
-                </p>
-              </label>
-            </div>
-          ) : (
-            <div style={styles.individualSection}>
-              <label style={styles.label}>Full Name</label>
-              <input
-                style={styles.input}
-                required
-                value={formData.full_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, full_name: e.target.value })
-                }
-              />
-
-              <label style={styles.label}>Email Address</label>
-              <input
-                style={styles.input}
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-              />
-
-              <div style={styles.row}>
-                <div style={{ flex: 1 }}>
-                  <label style={styles.label}>District</label>
-                  <input
-                    style={styles.input}
-                    required
-                    value={formData.district}
-                    onChange={(e) =>
-                      setFormData({ ...formData, district: e.target.value })
-                    }
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={styles.label}>Region</label>
-                  <input
-                    style={styles.input}
-                    required
-                    value={formData.region}
-                    onChange={(e) =>
-                      setFormData({ ...formData, region: e.target.value })
-                    }
-                  />
-                </div>
               </div>
-            </div>
+              <button type="submit" disabled={loading} style={styles.submitBtn}>
+                {loading ? <Loader2 className="animate-spin" /> : "Upload File"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSingleAdd} style={styles.form}>
+              {/* Include your form inputs here for full_name, email, etc. */}
+              <button type="submit" disabled={loading} style={styles.submitBtn}>
+                {loading ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  "Save Coordinator"
+                )}
+              </button>
+            </form>
           )}
-
-          <button type="submit" style={styles.submitBtn} disabled={loading}>
-            {loading
-              ? "Processing..."
-              : mode === "bulk"
-              ? "Import All Coordinators"
-              : "Create Account"}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -170,99 +172,99 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 2000,
-    backdropFilter: "blur(4px)",
+    zIndex: 1000,
   },
   modal: {
-    background: "#fff",
-    padding: "30px",
-    borderRadius: "20px",
-    width: "500px",
-    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    width: "100%",
+    maxWidth: "500px",
+    overflow: "hidden",
   },
   header: {
+    padding: "20px",
+    borderBottom: "1px solid #eee",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "15px",
   },
-  tabContainer: {
-    display: "flex",
-    gap: "10px",
-    marginBottom: "25px",
-    borderBottom: "1px solid #f1f5f9",
-    paddingBottom: "10px",
-  },
-  tab: {
-    background: "none",
+  closeBtn: {
     border: "none",
-    padding: "10px 20px",
+    background: "none",
+    cursor: "pointer",
+    color: "#666",
+  },
+
+  // New Status Bar Styles
+  successBar: {
+    margin: "15px",
+    padding: "12px",
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+  },
+  errorBar: {
+    margin: "15px",
+    padding: "12px",
+    backgroundColor: "#fee2e2",
+    color: "#991b1b",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+  },
+
+  tabNav: { display: "flex", borderBottom: "1px solid #eee" },
+  tab: {
+    flex: 1,
+    padding: "12px",
+    border: "none",
+    background: "#f8fafc",
     cursor: "pointer",
     color: "#64748b",
-    fontWeight: "600",
   },
   activeTab: {
-    background: "none",
+    flex: 1,
+    padding: "12px",
     border: "none",
-    padding: "10px 20px",
+    background: "#fff",
     cursor: "pointer",
     color: "#198104",
-    fontWeight: "700",
-    borderBottom: "3px solid #198104",
+    fontWeight: "bold",
+    borderBottom: "2px solid #198104",
   },
-  form: { display: "flex", flexDirection: "column" },
-  bulkSection: { padding: "10px 0" },
-  infoBox: {
-    display: "flex",
-    gap: "10px",
-    background: "#f0fdf4",
-    padding: "12px",
-    borderRadius: "10px",
-    color: "#166534",
-    fontSize: "12px",
-    marginBottom: "20px",
-  },
-  dropZone: {
-    border: "2px dashed #cbd5e1",
+  content: { padding: "20px" },
+  uploadArea: {
+    border: "2px dashed #e2e8f0",
+    borderRadius: "12px",
     padding: "30px",
-    borderRadius: "15px",
     textAlign: "center",
-    cursor: "pointer",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: "10px",
-    color: "#64748b",
-  },
-  row: { display: "flex", gap: "10px" },
-  label: {
-    fontSize: "11px",
-    fontWeight: "700",
-    color: "#475569",
-    marginBottom: "4px",
-    textTransform: "uppercase",
-  },
-  input: {
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #cbd5e1",
-    marginBottom: "12px",
-    fontSize: "14px",
-    width: "100%",
+    marginBottom: "20px",
   },
   submitBtn: {
-    background: "#198104",
+    width: "100%",
+    padding: "12px",
+    backgroundColor: "#198104",
     color: "#fff",
     border: "none",
-    padding: "14px",
-    borderRadius: "10px",
-    fontWeight: "700",
+    borderRadius: "8px",
     cursor: "pointer",
-    marginTop: "10px",
+    fontWeight: "bold",
+    display: "flex",
+    justifyContent: "center",
   },
 };
 

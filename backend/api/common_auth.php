@@ -21,13 +21,31 @@ $pdo = getDB();
 
 // 4. Set global userId for use in endpoints like me.php and audit-summary.php
 $userId = $_SESSION['user_id'] ?? null;
+$currentUser = null; // Initialize global user object
 
-function requireLogin()
-{
-    global $userId; // Pull the global variable into the function scope
-    if (!$userId) {
+if ($userId) {
+    // Fetch the full user record so we know their admin_level and role
+    $authStmt = $pdo->prepare("SELECT id, user_name, email, role, admin_level FROM public.users WHERE id = ?");
+    $authStmt->execute([$userId]);
+    $currentUser = $authStmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function requireLogin() {
+    global $currentUser; 
+    if (!$currentUser) {
         http_response_code(401);
         echo json_encode(["status" => "error", "message" => "Unauthorized access."]);
+        exit;
+    }
+}
+
+// Optional: Add a specific check for Super Admins
+function requireSuperAdmin() {
+    global $currentUser;
+    requireLogin();
+    if (($currentUser['admin_level'] ?? '') !== 'super_admin') {
+        http_response_code(403);
+        echo json_encode(["status" => "error", "message" => "Super Admin privileges required."]);
         exit;
     }
 }
