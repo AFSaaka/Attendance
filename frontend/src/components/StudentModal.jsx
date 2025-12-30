@@ -7,13 +7,14 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
+  FileText,
 } from "lucide-react";
 import axios from "../api/axios";
 
 const StudentModal = ({ isOpen, onClose, onRefresh }) => {
   const [mode, setMode] = useState("bulk");
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState({ type: null, message: "" }); // { type: 'success' | 'error', message: '' }
+  const [status, setStatus] = useState({ type: null, message: "" });
   const [file, setFile] = useState(null);
   const [formData, setFormData] = useState({
     uin: "",
@@ -38,9 +39,8 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
         await axios.post("/admin/add-student", formData);
         setStatus({
           type: "success",
-          message: "Student registered and enrolled successfully!",
+          message: "Student registered successfully!",
         });
-        // Reset form on success
         setFormData({
           uin: "",
           index_number: "",
@@ -52,25 +52,21 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
           level: "Level 100",
         });
       } else {
-        if (!file) throw new Error("Please select a file first.");
+        if (!file) throw new Error("Please select a file.");
         const data = new FormData();
         data.append("student_file", file);
-        const res = await axios.post("/admin/bulk-upload", data, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        const res = await axios.post("/admin/bulk-upload", data);
         setStatus({
           type: "success",
-          message: `Success! ${res.data.count || ""} Students processed.`,
+          message: `Imported ${res.data.count} students.`,
         });
         setFile(null);
       }
-
       if (onRefresh) onRefresh();
-      // We don't onClose() automatically anymore so the user can see the success state
     } catch (err) {
       setStatus({
         type: "error",
-        message: err.response?.data?.error || err.message || "Operation failed",
+        message: err.response?.data?.message || "Operation failed",
       });
     } finally {
       setLoading(false);
@@ -84,101 +80,106 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
       <div style={styles.modal}>
         {/* Header */}
         <div style={styles.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={styles.iconCircle}>
             {mode === "bulk" ? (
-              <FileSpreadsheet color="#198104" size={24} />
+              <FileSpreadsheet color="#198104" size={18} />
             ) : (
-              <UserPlus color="#198104" size={24} />
+              <UserPlus color="#198104" size={18} />
             )}
-            <h3 style={{ margin: 0 }}>Student Management</h3>
           </div>
-          <X
-            onClick={() => {
-              clearStatus();
-              onClose();
-            }}
-            style={{ cursor: "pointer", color: "#64748b" }}
-          />
-        </div>
-
-        {/* Status Messages */}
-        {status.type && (
-          <div
-            style={
-              status.type === "success" ? styles.successBar : styles.errorBar
-            }
-          >
-            {status.type === "success" ? (
-              <CheckCircle size={18} />
-            ) : (
-              <AlertCircle size={18} />
-            )}
-            <span>{status.message}</span>
+          <div style={{ flex: 1, marginLeft: "12px" }}>
+            <h3 style={styles.titleText}>Student Management</h3>
+            <p style={styles.subtitleText}>
+              {mode === "bulk"
+                ? "Import via spreadsheet"
+                : "Register manual entry"}
+            </p>
           </div>
-        )}
-
-        {/* Mode Toggle Tabs */}
-        <div style={styles.tabContainer}>
-          <button
-            onClick={() => {
-              setMode("bulk");
-              clearStatus();
-            }}
-            style={mode === "bulk" ? styles.activeTab : styles.tab}
-          >
-            Bulk Upload
-          </button>
-          <button
-            onClick={() => {
-              setMode("individual");
-              clearStatus();
-            }}
-            style={mode === "individual" ? styles.activeTab : styles.tab}
-          >
-            Individual Entry
+          <button onClick={onClose} style={styles.closeBtn}>
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        {/* Improved Tab Switcher */}
+        <div style={styles.tabWrapper}>
+          <div style={styles.tabContainer}>
+            <button
+              onClick={() => {
+                setMode("bulk");
+                clearStatus();
+              }}
+              style={{
+                ...styles.tab,
+                ...(mode === "bulk" ? styles.activeTab : {}),
+              }}
+            >
+              Bulk Upload
+            </button>
+            <button
+              onClick={() => {
+                setMode("individual");
+                clearStatus();
+              }}
+              style={{
+                ...styles.tab,
+                ...(mode === "individual" ? styles.activeTab : {}),
+              }}
+            >
+              Manual Entry
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={styles.formContent}>
+          {status.type && (
+            <div
+              style={
+                status.type === "success" ? styles.successBar : styles.errorBar
+              }
+            >
+              {status.type === "success" ? (
+                <CheckCircle size={16} />
+              ) : (
+                <AlertCircle size={16} />
+              )}
+              <span>{status.message}</span>
+            </div>
+          )}
+
           {mode === "bulk" ? (
-            <div style={styles.bulkSection}>
-              <div style={styles.infoBox}>
-                <AlertCircle size={18} />
-                <span>
-                  Upload <b>Excel (.xlsx)</b> or <b>CSV</b> with: uin,
-                  index_number, full_name, program, region, district, community,
-                  level
-                </span>
-              </div>
+            <div style={styles.bulkBody}>
               <label style={styles.dropZone}>
-                <Upload size={32} color="#94a3b8" />
                 <input
                   type="file"
-                  accept=".csv, .xlsx, .xls"
                   hidden
-                  onChange={(e) => {
-                    clearStatus();
-                    setFile(e.target.files[0]);
-                  }}
+                  onChange={(e) => setFile(e.target.files[0])}
                 />
-                <p>
-                  {file
-                    ? file.name
-                    : "Click to browse or drag Student CSV here"}
-                </p>
+                {file ? (
+                  <>
+                    <FileText size={32} color="#198104" />
+                    <span style={styles.fileName}>{file.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={32} color="#94a3b8" />
+                    <p style={styles.dropText}>Click to browse CSV/Excel</p>
+                  </>
+                )}
               </label>
             </div>
           ) : (
-            <div style={styles.individualSection}>
-              <label style={styles.label}>Full Name</label>
-              <input
-                style={styles.input}
-                required
-                value={formData.full_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, full_name: e.target.value })
-                }
-              />
+            <div style={styles.manualBody}>
+              <div style={styles.field}>
+                <label style={styles.label}>Full Name</label>
+                <input
+                  style={styles.input}
+                  required
+                  value={formData.full_name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, full_name: e.target.value })
+                  }
+                />
+              </div>
 
               <div style={styles.row}>
                 <div style={{ flex: 1 }}>
@@ -193,7 +194,7 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={styles.label}>Index Number</label>
+                  <label style={styles.label}>Index No.</label>
                   <input
                     style={styles.input}
                     required
@@ -205,22 +206,23 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
                 </div>
               </div>
 
+              <div style={styles.field}>
+                <label style={styles.label}>Program</label>
+                <input
+                  style={styles.input}
+                  required
+                  value={formData.program}
+                  onChange={(e) =>
+                    setFormData({ ...formData, program: e.target.value })
+                  }
+                />
+              </div>
+
               <div style={styles.row}>
-                <div style={{ flex: 1 }}>
-                  <label style={styles.label}>Program</label>
-                  <input
-                    style={styles.input}
-                    required
-                    value={formData.program}
-                    onChange={(e) =>
-                      setFormData({ ...formData, program: e.target.value })
-                    }
-                  />
-                </div>
                 <div style={{ flex: 1 }}>
                   <label style={styles.label}>Level</label>
                   <select
-                    style={styles.input}
+                    style={styles.select}
                     value={formData.level}
                     onChange={(e) =>
                       setFormData({ ...formData, level: e.target.value })
@@ -230,9 +232,6 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
                     <option value="Level 200">200</option>
                   </select>
                 </div>
-              </div>
-
-              <div style={styles.row}>
                 <div style={{ flex: 1 }}>
                   <label style={styles.label}>Region</label>
                   <input
@@ -244,6 +243,9 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
                     }
                   />
                 </div>
+              </div>
+
+              <div style={styles.row}>
                 <div style={{ flex: 1 }}>
                   <label style={styles.label}>District</label>
                   <input
@@ -270,17 +272,17 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
             </div>
           )}
 
-          <button type="submit" style={styles.submitBtn} disabled={loading}>
+          <button
+            type="submit"
+            style={loading ? styles.btnDisabled : styles.btnActive}
+            disabled={loading}
+          >
             {loading ? (
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <Loader2 size={18} className="animate-spin" /> Processing...
-              </div>
+              <Loader2 size={18} className="animate-spin" />
             ) : mode === "bulk" ? (
-              "Upload & Enroll All"
+              "Upload Students"
             ) : (
-              "Register Student"
+              "Save Student"
             )}
           </button>
         </form>
@@ -290,137 +292,168 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
 };
 
 const styles = {
-  // ... existing styles ...
   overlay: {
     position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    inset: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 2000,
     backdropFilter: "blur(4px)",
+    padding: "16px",
   },
   modal: {
     background: "#fff",
-    padding: "30px",
     borderRadius: "20px",
-    width: "650px",
-    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
-    maxHeight: "90vh",
-    overflowY: "auto",
+    width: "100%",
+    maxWidth: "480px",
+    boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
+    overflow: "hidden",
   },
   header: {
+    padding: "20px 24px",
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "15px",
+    borderBottom: "1px solid #f1f5f9",
   },
-
-  // Status Bars
-  successBar: {
-    padding: "12px 16px",
-    backgroundColor: "#dcfce7",
-    color: "#166534",
+  iconCircle: {
+    width: "36px",
+    height: "36px",
     borderRadius: "10px",
+    backgroundColor: "#e8f5e6",
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    fontSize: "14px",
-    marginBottom: "15px",
-    border: "1px solid #bbf7d0",
+    justifyContent: "center",
   },
-  errorBar: {
-    padding: "12px 16px",
-    backgroundColor: "#fee2e2",
-    color: "#991b1b",
-    borderRadius: "10px",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    fontSize: "14px",
-    marginBottom: "15px",
-    border: "1px solid #fecaca",
+  titleText: {
+    margin: 0,
+    fontSize: "1.1rem",
+    fontWeight: "700",
+    color: "#0f172a",
   },
-
+  subtitleText: { margin: 0, fontSize: "0.8rem", color: "#64748b" },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    color: "#94a3b8",
+    cursor: "pointer",
+  },
+  tabWrapper: { padding: "12px 24px 0", backgroundColor: "#f8fafc" },
   tabContainer: {
     display: "flex",
-    gap: "10px",
-    marginBottom: "25px",
-    borderBottom: "1px solid #f1f5f9",
-    paddingBottom: "10px",
+    backgroundColor: "#e2e8f0",
+    borderRadius: "10px",
+    padding: "4px",
   },
   tab: {
-    background: "none",
-    border: "none",
-    padding: "10px 20px",
-    cursor: "pointer",
-    color: "#64748b",
+    flex: 1,
+    padding: "8px",
+    fontSize: "0.85rem",
     fontWeight: "600",
+    color: "#64748b",
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    borderRadius: "8px",
+    transition: "0.2s",
   },
   activeTab: {
-    background: "none",
-    border: "none",
-    padding: "10px 20px",
-    cursor: "pointer",
+    background: "#fff",
     color: "#198104",
-    fontWeight: "700",
-    borderBottom: "3px solid #198104",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
   },
-  form: { display: "flex", flexDirection: "column" },
-  bulkSection: { padding: "10px 0" },
-  infoBox: {
-    display: "flex",
-    gap: "10px",
-    background: "#f0f9ff",
-    padding: "12px",
-    borderRadius: "10px",
-    color: "#0369a1",
-    fontSize: "12px",
-    marginBottom: "20px",
-  },
-  dropZone: {
-    border: "2px dashed #cbd5e1",
-    padding: "40px",
-    borderRadius: "15px",
-    textAlign: "center",
-    cursor: "pointer",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "10px",
-    color: "#64748b",
-  },
-  row: { display: "flex", gap: "10px" },
+  formContent: { padding: "24px" },
+  field: { marginBottom: "14px" },
+  row: { display: "flex", gap: "12px", marginBottom: "14px" },
   label: {
-    fontSize: "11px",
+    display: "block",
+    fontSize: "0.7rem",
     fontWeight: "700",
     color: "#475569",
     marginBottom: "4px",
     textTransform: "uppercase",
   },
   input: {
-    padding: "10px",
-    borderRadius: "8px",
-    border: "1px solid #cbd5e1",
-    marginBottom: "12px",
-    fontSize: "14px",
     width: "100%",
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: "1px solid #e2e8f0",
+    fontSize: "0.9rem",
+    outline: "none",
   },
-  submitBtn: {
-    background: "#198104",
+  select: {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: "1px solid #e2e8f0",
+    fontSize: "0.9rem",
+    backgroundColor: "#fff",
+  },
+  dropZone: {
+    border: "2px dashed #cbd5e1",
+    padding: "30px",
+    borderRadius: "12px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    cursor: "pointer",
+    backgroundColor: "#fcfcfc",
+  },
+  dropText: { marginTop: "10px", fontSize: "0.85rem", color: "#64748b" },
+  fileName: {
+    fontSize: "0.85rem",
+    color: "#198104",
+    fontWeight: "600",
+    marginTop: "8px",
+  },
+  btnActive: {
+    width: "100%",
+    backgroundColor: "#198104",
     color: "#fff",
-    border: "none",
-    padding: "14px",
+    padding: "12px",
     borderRadius: "10px",
     fontWeight: "700",
+    border: "none",
     cursor: "pointer",
+    marginTop: "10px",
+  },
+  btnDisabled: {
+    width: "100%",
+    backgroundColor: "#94a3b8",
+    color: "#fff",
+    padding: "12px",
+    borderRadius: "10px",
+    fontWeight: "700",
+    border: "none",
+    cursor: "not-allowed",
     marginTop: "10px",
     display: "flex",
     justifyContent: "center",
+  },
+  successBar: {
+    padding: "10px 12px",
+    backgroundColor: "#ecfdf5",
+    color: "#065f46",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "0.8rem",
+    marginBottom: "16px",
+    border: "1px solid #a7f3d0",
+  },
+  errorBar: {
+    padding: "10px 12px",
+    backgroundColor: "#fef2f2",
+    color: "#991b1b",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "0.8rem",
+    marginBottom: "16px",
+    border: "1px solid #fecaca",
   },
 };
 

@@ -6,8 +6,8 @@ import {
   FileText,
   CheckCircle,
   AlertCircle,
-  XCircle,
   Loader2,
+  MapPin,
 } from "lucide-react";
 import axios from "../api/axios";
 
@@ -15,7 +15,7 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
   const [activeTab, setActiveTab] = useState("single");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
-
+  const [file, setFile] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
     region: "",
@@ -23,8 +23,6 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
     latitude: "",
     longitude: "",
   });
-
-  const [file, setFile] = useState(null);
 
   if (!isOpen) return null;
 
@@ -55,21 +53,17 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
         await axios.post("/admin/add-community-single", formData);
       } else {
         if (!file) throw new Error("Please select a file first.");
-
         const data = new FormData();
-        // Ensure "file" matches the PHP: if (!isset($_FILES['file']))
         data.append("file", file);
-
         await axios.post("/admin/upload-communities", data, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+          headers: { "Content-Type": "multipart/form-data" },
         });
       }
-
-      setStatus({ type: "success", message: "Data saved successfully!" });
+      setStatus({
+        type: "success",
+        message: "Community data saved successfully!",
+      });
       if (onRefresh) onRefresh();
-      // Reset after success
       setTimeout(resetModal, 2000);
     } catch (err) {
       setStatus({
@@ -85,152 +79,152 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
+        {/* Header */}
         <div style={styles.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={styles.iconCircle}>
-              <Plus size={20} color="#198104" />
-            </div>
-            <h3 style={{ margin: 0 }}>Add Community</h3>
+          <div style={styles.iconCircle}>
+            <MapPin color="#198104" size={18} />
           </div>
-          <X
-            onClick={resetModal}
-            style={{ cursor: "pointer", color: "#94a3b8" }}
-          />
-        </div>
-
-        <div style={styles.tabContainer}>
-          <button
-            style={{
-              ...styles.tab,
-              ...(activeTab === "single" ? styles.activeTab : {}),
-            }}
-            onClick={() => {
-              setActiveTab("single");
-              setStatus(null);
-            }}
-          >
-            <Plus size={16} /> Individual
-          </button>
-          <button
-            style={{
-              ...styles.tab,
-              ...(activeTab === "bulk" ? styles.activeTab : {}),
-            }}
-            onClick={() => {
-              setActiveTab("bulk");
-              setStatus(null);
-            }}
-          >
-            <Upload size={16} /> Bulk Upload
+          <div style={{ flex: 1, marginLeft: "12px" }}>
+            <h3 style={styles.titleText}>Community Setup</h3>
+            <p style={styles.subtitleText}>
+              Add locations for student assignment
+            </p>
+          </div>
+          <button onClick={resetModal} style={styles.closeBtn}>
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={styles.body}>
+        {/* Pill Tab Switcher */}
+        <div style={styles.tabWrapper}>
+          <div style={styles.tabContainer}>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("single");
+                setStatus(null);
+              }}
+              style={{
+                ...styles.tab,
+                ...(activeTab === "single" ? styles.activeTab : {}),
+              }}
+            >
+              Individual
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("bulk");
+                setStatus(null);
+              }}
+              style={{
+                ...styles.tab,
+                ...(activeTab === "bulk" ? styles.activeTab : {}),
+              }}
+            >
+              Bulk Upload
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={styles.formContent}>
           {status && (
             <div
               style={
-                status.type === "success"
-                  ? styles.successAlert
-                  : styles.errorAlert
+                status.type === "success" ? styles.successBar : styles.errorBar
               }
             >
               {status.type === "success" ? (
-                <CheckCircle size={18} />
+                <CheckCircle size={16} />
               ) : (
-                <XCircle size={18} />
+                <AlertCircle size={16} />
               )}
               <span>{status.message}</span>
             </div>
           )}
 
           {activeTab === "single" ? (
-            <div style={styles.formGrid}>
-              <div style={styles.inputGroup}>
+            <div style={styles.manualBody}>
+              <div style={styles.field}>
                 <label style={styles.label}>Community Name</label>
                 <input
                   name="name"
+                  style={styles.input}
                   required
                   value={formData.name}
                   onChange={handleInputChange}
                   placeholder="e.g. Abokobi"
-                  style={styles.input}
                 />
               </div>
-              <div style={{ display: "flex", gap: "12px" }}>
-                <div style={styles.inputGroup}>
+
+              <div style={styles.row}>
+                <div style={{ flex: 1 }}>
                   <label style={styles.label}>Region</label>
                   <input
                     name="region"
+                    style={styles.input}
                     required
                     value={formData.region}
                     onChange={handleInputChange}
-                    style={styles.input}
                   />
                 </div>
-                <div style={styles.inputGroup}>
+                <div style={{ flex: 1 }}>
                   <label style={styles.label}>District</label>
                   <input
                     name="district"
+                    style={styles.input}
                     required
                     value={formData.district}
                     onChange={handleInputChange}
-                    style={styles.input}
                   />
                 </div>
               </div>
-              <div style={{ display: "flex", gap: "12px" }}>
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Lat (Optional)</label>
+
+              <div style={styles.row}>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Latitude (Optional)</label>
                   <input
                     name="latitude"
                     type="number"
                     step="any"
+                    style={styles.input}
                     value={formData.latitude}
                     onChange={handleInputChange}
-                    style={styles.input}
                   />
                 </div>
-                <div style={styles.inputGroup}>
-                  <label style={styles.label}>Lng (Optional)</label>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Longitude (Optional)</label>
                   <input
                     name="longitude"
                     type="number"
                     step="any"
+                    style={styles.input}
                     value={formData.longitude}
                     onChange={handleInputChange}
-                    style={styles.input}
                   />
                 </div>
               </div>
             </div>
           ) : (
-            <div style={styles.dropzone}>
-              <input
-                type="file"
-                accept=".csv, .xlsx, .xls" // Key change: added Excel extensions
-                id="file-upload"
-                style={{ display: "none" }}
-                onChange={(e) => setFile(e.target.files[0])}
-              />
-              <label
-                htmlFor="file-upload"
-                style={{ cursor: "pointer", display: "block" }}
-              >
-                <div style={styles.uploadIconWrapper}>
-                  <FileText size={32} color={file ? "#198104" : "#64748b"} />
-                </div>
-                <p
-                  style={{
-                    fontWeight: "600",
-                    color: "#1e293b",
-                    marginTop: "12px",
-                  }}
-                >
-                  {file ? file.name : "Click to select CSV or Excel file"}
-                </p>
-                <p style={{ fontSize: "12px", color: "#94a3b8" }}>
-                  Supports .xlsx, .xls, and .csv
-                </p>
+            <div style={styles.bulkBody}>
+              <label style={styles.dropZone}>
+                <input
+                  type="file"
+                  hidden
+                  accept=".csv, .xlsx, .xls"
+                  onChange={(e) => setFile(e.target.files[0])}
+                />
+                {file ? (
+                  <>
+                    <FileText size={32} color="#198104" />
+                    <span style={styles.fileName}>{file.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={32} color="#94a3b8" />
+                    <p style={styles.dropText}>Click to select CSV or Excel</p>
+                  </>
+                )}
               </label>
             </div>
           )}
@@ -239,9 +233,13 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
             <button type="button" onClick={resetModal} style={styles.btnCancel}>
               Cancel
             </button>
-            <button type="submit" disabled={loading} style={styles.btnConfirm}>
+            <button
+              type="submit"
+              disabled={loading}
+              style={loading ? styles.btnDisabled : styles.btnActive}
+            >
               {loading ? (
-                <Loader2 size={16} className="spin-animate" />
+                <Loader2 size={18} className="animate-spin" />
               ) : (
                 "Save Community"
               )}
@@ -249,11 +247,7 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
           </div>
         </form>
       </div>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .spin-animate { animation: spin 1s linear infinite; }
-      `}</style>
+      <style>{` .animate-spin { animation: spin 1s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } `}</style>
     </div>
   );
 };
@@ -262,138 +256,174 @@ const styles = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15, 23, 42, 0.7)",
-    backdropFilter: "blur(4px)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     display: "flex",
-    alignItems: "center",
     justifyContent: "center",
-    zIndex: 1000,
+    alignItems: "center",
+    zIndex: 2000,
+    backdropFilter: "blur(4px)",
+    padding: "16px",
   },
   modal: {
     background: "#fff",
+    borderRadius: "20px",
     width: "100%",
-    maxWidth: "520px",
-    borderRadius: "16px",
+    maxWidth: "480px",
+    boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
     overflow: "hidden",
-    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
   },
   header: {
     padding: "20px 24px",
-    borderBottom: "1px solid #f1f5f9",
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
+    borderBottom: "1px solid #f1f5f9",
   },
   iconCircle: {
     width: "36px",
     height: "36px",
     borderRadius: "10px",
-    background: "#f0fdf4",
+    backgroundColor: "#e8f5e6",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
   },
+  titleText: {
+    margin: 0,
+    fontSize: "1.1rem",
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  subtitleText: { margin: 0, fontSize: "0.8rem", color: "#64748b" },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    color: "#94a3b8",
+    cursor: "pointer",
+  },
+  tabWrapper: { padding: "12px 24px 0", backgroundColor: "#f8fafc" },
   tabContainer: {
     display: "flex",
-    padding: "12px 24px",
-    background: "#f8fafc",
-    gap: "8px",
+    backgroundColor: "#e2e8f0",
+    borderRadius: "10px",
+    padding: "4px",
   },
   tab: {
-    padding: "8px 16px",
-    borderRadius: "8px",
-    border: "none",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
+    flex: 1,
+    padding: "8px",
+    fontSize: "0.85rem",
     fontWeight: "600",
     color: "#64748b",
-    background: "transparent",
-    transition: "all 0.2s",
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    borderRadius: "8px",
+    transition: "0.2s",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
   },
   activeTab: {
     background: "#fff",
     color: "#198104",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
   },
-  body: { padding: "24px" },
-  formGrid: { display: "flex", flexDirection: "column", gap: "16px" },
-  inputGroup: { display: "flex", flexDirection: "column", gap: "6px", flex: 1 },
-  label: { fontSize: "13px", fontWeight: "600", color: "#475569" },
+  formContent: { padding: "24px" },
+  field: { marginBottom: "14px" },
+  row: { display: "flex", gap: "12px", marginBottom: "14px" },
+  label: {
+    display: "block",
+    fontSize: "0.7rem",
+    fontWeight: "700",
+    color: "#475569",
+    marginBottom: "4px",
+    textTransform: "uppercase",
+  },
   input: {
-    padding: "10px 14px",
-    borderRadius: "10px",
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: "8px",
     border: "1px solid #e2e8f0",
-    fontSize: "14px",
+    fontSize: "0.9rem",
     outline: "none",
   },
-  dropzone: {
-    border: "2px dashed #e2e8f0",
-    padding: "40px",
-    textAlign: "center",
-    borderRadius: "14px",
-    background: "#f8fafc",
-  },
-  uploadIconWrapper: {
-    width: "60px",
-    height: "60px",
-    borderRadius: "50%",
-    background: "#fff",
+  dropZone: {
+    border: "2px dashed #cbd5e1",
+    padding: "30px",
+    borderRadius: "12px",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto",
-    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
+    cursor: "pointer",
+    backgroundColor: "#fcfcfc",
   },
-  footer: {
-    marginTop: "24px",
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "12px",
+  dropText: { marginTop: "10px", fontSize: "0.85rem", color: "#64748b" },
+  fileName: {
+    fontSize: "0.85rem",
+    color: "#198104",
+    fontWeight: "600",
+    marginTop: "8px",
   },
+  footer: { display: "flex", gap: "12px", marginTop: "10px" },
   btnCancel: {
-    padding: "10px 20px",
+    flex: 1,
+    padding: "12px",
     borderRadius: "10px",
     border: "1px solid #e2e8f0",
-    background: "white",
-    cursor: "pointer",
-    fontWeight: "600",
+    background: "#fff",
+    fontWeight: "700",
     color: "#64748b",
-  },
-  btnConfirm: {
-    padding: "10px 24px",
-    borderRadius: "10px",
-    border: "none",
-    background: "#198104",
-    color: "#fff",
     cursor: "pointer",
-    fontWeight: "600",
+  },
+  btnActive: {
+    flex: 2,
+    backgroundColor: "#198104",
+    color: "#fff",
+    padding: "12px",
+    borderRadius: "10px",
+    fontWeight: "700",
+    border: "none",
+    cursor: "pointer",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  btnDisabled: {
+    flex: 2,
+    backgroundColor: "#94a3b8",
+    color: "#fff",
+    padding: "12px",
+    borderRadius: "10px",
+    fontWeight: "700",
+    border: "none",
+    cursor: "not-allowed",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  successBar: {
+    padding: "10px 12px",
+    backgroundColor: "#ecfdf5",
+    color: "#065f46",
+    borderRadius: "8px",
     display: "flex",
     alignItems: "center",
     gap: "8px",
+    fontSize: "0.8rem",
+    marginBottom: "16px",
+    border: "1px solid #a7f3d0",
   },
-  successAlert: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "12px 16px",
-    background: "#f0fdf4",
-    color: "#166534",
-    border: "1px solid #bbf7d0",
-    borderRadius: "10px",
-    marginBottom: "20px",
-  },
-  errorAlert: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    padding: "12px 16px",
-    background: "#fef2f2",
+  errorBar: {
+    padding: "10px 12px",
+    backgroundColor: "#fef2f2",
     color: "#991b1b",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "0.8rem",
+    marginBottom: "16px",
     border: "1px solid #fecaca",
-    borderRadius: "10px",
-    marginBottom: "20px",
   },
 };
 

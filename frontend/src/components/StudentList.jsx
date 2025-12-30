@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
-  GraduationCap,
   MapPin,
   ChevronDown,
   ChevronRight,
@@ -10,14 +9,23 @@ import {
   Users,
   Power,
   PowerOff,
+  Smartphone,
+  Loader2,
 } from "lucide-react";
 import axios from "../api/axios";
+// Import the modal component we built
+import EditStudentModal from "./EditStudentModal";
 
 const StudentList = () => {
   const [rawData, setRawData] = useState([]);
-  const [expandedSections, setExpandedSections] = useState({}); // Keyed by path: "Region" or "Region-District"
+  const [expandedSections, setExpandedSections] = useState({});
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Modal States
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [currentStudent, setCurrentStudent] = useState(null);
 
   const fetchStudents = async () => {
     try {
@@ -34,27 +42,40 @@ const StudentList = () => {
     fetchStudents();
   }, []);
 
-  // 1. NESTED GROUPING LOGIC (Region > District > Community)
+  const handleAction = async (id, action, confirmMessage) => {
+    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    try {
+      setActionLoading(`${id}-${action}`);
+      await axios.post("/admin/student-actions", { id, action });
+      await fetchStudents();
+    } catch (err) {
+      alert("Action failed: " + (err.response?.data?.error || "Server error"));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const openEditModal = (student) => {
+    setCurrentStudent(student);
+    setIsEditModalOpen(true);
+  };
+
   const groupedData = useMemo(() => {
     const lowerSearch = searchTerm.toLowerCase();
-
     return rawData
       .filter(
         (s) =>
           s.full_name?.toLowerCase().includes(lowerSearch) ||
           s.index_number?.toLowerCase().includes(lowerSearch) ||
-          s.district?.toLowerCase().includes(lowerSearch) ||
-          s.community?.toLowerCase().includes(lowerSearch)
+          s.uin?.toLowerCase().includes(lowerSearch)
       )
       .reduce((acc, s) => {
         const r = s.region || "Unknown Region";
         const d = s.district || "Unknown District";
         const c = s.community || "Unknown Community";
-
         if (!acc[r]) acc[r] = {};
         if (!acc[r][d]) acc[r][d] = {};
         if (!acc[r][d][c]) acc[r][d][c] = [];
-
         acc[r][d][c].push(s);
         return acc;
       }, {});
@@ -73,7 +94,7 @@ const StudentList = () => {
           <Search size={18} color="#64748b" />
           <input
             type="text"
-            placeholder="Search by Name, Index, District, or Community..."
+            placeholder="Search by Name, UIN, or Index..."
             style={styles.searchInput}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -92,7 +113,6 @@ const StudentList = () => {
       ) : (
         Object.entries(groupedData).map(([region, districts]) => (
           <div key={region} style={styles.regionSection}>
-            {/* REGION LEVEL */}
             <div
               style={styles.regionHeader}
               onClick={() => toggleSection(region)}
@@ -109,7 +129,6 @@ const StudentList = () => {
             {(expandedSections[region] || searchTerm) &&
               Object.entries(districts).map(([district, communities]) => (
                 <div key={district} style={styles.districtBlock}>
-                  {/* DISTRICT LEVEL */}
                   <div
                     style={styles.districtHeader}
                     onClick={() => toggleSection(`${region}-${district}`)}
@@ -127,7 +146,6 @@ const StudentList = () => {
                   {(expandedSections[`${region}-${district}`] || searchTerm) &&
                     Object.entries(communities).map(([community, students]) => (
                       <div key={community} style={styles.communityBlock}>
-                        {/* COMMUNITY LABEL */}
                         <div style={styles.communityLabel}>
                           <div style={styles.dot} />
                           <span>
@@ -180,7 +198,7 @@ const StudentList = () => {
                                     )}
                                   </div>
                                   <div style={styles.secondaryText}>
-                                    Index: {s.index_number}
+                                    UIN: {s.uin} | Index: {s.index_number}
                                   </div>
                                 </td>
                                 <td style={styles.td}>
@@ -193,29 +211,72 @@ const StudentList = () => {
                                 </td>
                                 <td style={styles.td}>
                                   <div style={styles.actionWrapper}>
-                                    {/* TOGGLE ACTIVE BUTTON */}
+                                    {s.is_claimed && (
+                                      <>
+                                        <button
+                                          style={styles.btnDevice}
+                                          disabled={
+                                            actionLoading ===
+                                            `${s.id}-clear_device`
+                                          }
+                                          onClick={() =>
+                                            handleAction(
+                                              s.id,
+                                              "clear_device",
+                                              "Clear device lock?"
+                                            )
+                                          }
+                                          title="Clear Device"
+                                        >
+                                          {actionLoading ===
+                                          `${s.id}-clear_device` ? (
+                                            <Loader2
+                                              size={14}
+                                              className="animate-spin"
+                                            />
+                                          ) : (
+                                            <Smartphone size={14} />
+                                          )}
+                                        </button>
+                                        <button
+                                          style={
+                                            s.is_active
+                                              ? styles.btnDeactivate
+                                              : styles.btnActivate
+                                          }
+                                          disabled={
+                                            actionLoading ===
+                                            `${s.id}-toggle_status`
+                                          }
+                                          onClick={() =>
+                                            handleAction(s.id, "toggle_status")
+                                          }
+                                        >
+                                          {s.is_active ? (
+                                            <PowerOff size={14} />
+                                          ) : (
+                                            <Power size={14} />
+                                          )}
+                                        </button>
+                                      </>
+                                    )}
                                     <button
-                                      style={
-                                        s.is_active
-                                          ? styles.btnDeactivate
-                                          : styles.btnActivate
-                                      }
-                                      title={
-                                        s.is_active
-                                          ? "Deactivate Account"
-                                          : "Activate Account"
-                                      }
+                                      style={styles.btnEdit}
+                                      onClick={() => openEditModal(s)}
+                                      title="Edit"
                                     >
-                                      {s.is_active ? (
-                                        <PowerOff size={14} />
-                                      ) : (
-                                        <Power size={14} />
-                                      )}
-                                    </button>
-                                    <button style={styles.btnEdit}>
                                       <Edit3 size={14} />
                                     </button>
-                                    <button style={styles.btnDelete}>
+                                    <button
+                                      style={styles.btnDelete}
+                                      onClick={() =>
+                                        handleAction(
+                                          s.id,
+                                          "delete",
+                                          "Delete this student?"
+                                        )
+                                      }
+                                    >
                                       <Trash2 size={14} />
                                     </button>
                                   </div>
@@ -231,10 +292,19 @@ const StudentList = () => {
           </div>
         ))
       )}
+
+      {/* MODAL INTEGRATION */}
+      <EditStudentModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        student={currentStudent}
+        onUpdateSuccess={fetchStudents}
+      />
     </div>
   );
 };
 
+// ... Styles remain exactly as you provided them ...
 const styles = {
   container: { display: "flex", flexDirection: "column", gap: "15px" },
   loading: { padding: "40px", textAlign: "center", color: "#64748b" },
@@ -262,7 +332,6 @@ const styles = {
     color: "#64748b",
     fontSize: "13px",
   },
-
   regionSection: {
     background: "#fff",
     borderRadius: "12px",
@@ -279,7 +348,6 @@ const styles = {
     gap: "10px",
     borderBottom: "1px solid #e2e8f0",
   },
-
   districtBlock: {
     borderLeft: "4px solid #198104",
     marginLeft: "15px",
@@ -295,7 +363,6 @@ const styles = {
     fontSize: "14px",
     color: "#475569",
   },
-
   communityBlock: { padding: "10px 20px 20px 35px" },
   communityLabel: {
     display: "flex",
@@ -313,7 +380,6 @@ const styles = {
     borderRadius: "50%",
     background: "#cbd5e1",
   },
-
   table: { width: "100%", borderCollapse: "collapse" },
   theadRow: { background: "#fdfdfd" },
   th: {
@@ -325,7 +391,6 @@ const styles = {
   },
   tr: { borderBottom: "1px solid #f8fafc" },
   td: { padding: "12px 10px", verticalAlign: "middle" },
-
   primaryText: { fontWeight: "600", color: "#1e293b", fontSize: "13px" },
   secondaryText: { color: "#64748b", fontSize: "11px" },
   locationText: { color: "#475569", fontSize: "13px" },
@@ -343,7 +408,6 @@ const styles = {
     color: "#854d0e",
     borderRadius: "4px",
   },
-
   actionWrapper: { display: "flex", gap: "6px", justifyContent: "center" },
   btnEdit: {
     border: "none",
@@ -377,7 +441,14 @@ const styles = {
     borderRadius: "6px",
     cursor: "pointer",
   },
-
+  btnDevice: {
+    border: "none",
+    background: "#f5f3ff",
+    color: "#7c3aed",
+    padding: "6px",
+    borderRadius: "6px",
+    cursor: "pointer",
+  },
   noResults: { textAlign: "center", padding: "40px", color: "#64748b" },
 };
 
