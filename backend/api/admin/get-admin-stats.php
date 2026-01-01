@@ -1,26 +1,50 @@
 <?php
-// backend/api/admin/get-admin-stats.php
-require_once __DIR__ . '/../../config/db.php';
-require_once __DIR__ . '/../common_auth.php'; // Ensure admin-only check is inside here
+declare(strict_types=1);
 
-header("Content-Type: application/json");
+require_once __DIR__ . '/../common_auth.php';
+
+requireAdmin(); 
+
+header("Content-Type: application/json; charset=utf-8");
 
 try {
-    // We run three counts in one request for performance
-    $stats = [];
+    // 1. Get current session context (Vital for accurate enrollment counts)
+    $session_id = $pdo->query("SELECT id FROM public.academic_sessions WHERE is_current = true LIMIT 1")->fetchColumn();
 
-    // 1. Total Students
-    $stats['students'] = $pdo->query("SELECT COUNT(*) FROM public.students")->fetchColumn();
+    if (!$session_id) {
+        throw new Exception("Active academic session not found.");
+    }
 
-    // 2. Total Communities
-    $stats['communities'] = $pdo->query("SELECT COUNT(*) FROM public.communities")->fetchColumn();
+    /**
+     * 2. REVISED COUNTS:
+     * registered_students: Actual users linked to the registry.
+     * total_students: EVERYONE enrolled via bulk upload for this session.
+     */
+    $sql = "
+        SELECT 
+            (SELECT COUNT(*)::int FROM public.students) as registered_students,
+            (SELECT COUNT(*)::int FROM public.student_enrollments WHERE session_id = :sid) as total_students,
+            (SELECT COUNT(*)::int FROM public.communities) as total_communities,
+            (SELECT COUNT(*)::int FROM public.coordinators) as active_coordinators
+    ";
 
-    // 3. Total Coordinators
-    $stats['coordinators'] = $pdo->query("SELECT COUNT(*) FROM public.coordinators")->fetchColumn();
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(['sid' => $session_id]);
+    $data = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    echo json_encode($stats);
+    echo json_encode([
+        "status" => "success",
+        "stats" => [
+            "registered_students" => $data['registered_students'],
+            "total_students"      => $data['total_students'],
+            "total_communities"   => $data['total_communities'],
+            "active_coordinators" => $data['active_coordinators'],
+        ],
+        "session_context" => $session_id
+    ]);
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
+    error_log("Dashboard Stats Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["error" => $e->getMessage()]);
+    echo json_encode(["status" => "error", "message" => "Internal Server Error"]);
 }

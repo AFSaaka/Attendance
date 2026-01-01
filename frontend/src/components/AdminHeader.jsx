@@ -37,13 +37,15 @@ const AdminHeader = ({ user, onAction }) => {
         >
           <UserPlus size={20} />
         </button>
-        <button
-          style={styles.btn}
-          onClick={() => onAction("coordinator")}
-          title="Add Coordinator"
-        >
-          <Users size={20} />
-        </button>
+        {user?.admin_level === "super_admin" && (
+          <button
+            style={styles.btn}
+            onClick={() => onAction("coordinator")}
+            title="Add Coordinator"
+          >
+            <Users size={20} />
+          </button>
+        )}
         <button
           style={styles.btn}
           onClick={() => onAction("community")}

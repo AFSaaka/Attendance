@@ -1,14 +1,17 @@
 <?php
 // backend/api/admin/upload-admins.php
-require_once __DIR__ . '/../../config/db.php';
-// IMPORTANT: Use common_auth to ensure $pdo and requireSuperAdmin are available
 require_once __DIR__ . '/../common_auth.php'; 
 require_once __DIR__ . '/../../vendor/autoload.php';
 use Shuchkin\SimpleXLSX;
 
-requireSuperAdmin(); // Use our new security check
+// 1. MANDATORY SECURITY: Only a Superadmin can create other Admins
+requireSuperAdmin(); 
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') exit;
+header("Content-Type: application/json");
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    exit;
+}
 
 try {
     if (!isset($_FILES['file'])) throw new Exception("No file uploaded");
@@ -24,40 +27,83 @@ try {
 
     $pdo->beginTransaction();
     
-    // Check your DB: Is it 'password' or 'password_hash'? 
-    // Based on your common_auth/get-admins, 'password' is more likely.
+    // We use a more descriptive variable set for clarity
     $stmt = $pdo->prepare("
-        INSERT INTO public.users (email, user_name, password_hash, role, admin_level, must_reset_password)
-        VALUES (:email, :name, :pass, 'admin', :level, true)
+        INSERT INTO public.users 
+        (email, user_name, password_hash, role, admin_level, must_reset_password, otp_code, otp_expires_at, is_active)
+        VALUES (:email, :name, :pass, 'admin', :level, true, :otp, :expires, true)
         ON CONFLICT (email) DO NOTHING
     ");
 
-    $count = 0;
-    foreach ($rows as $row) {
-        $email = isset($row[1]) ? trim($row[1]) : '';
-        if (empty($email)) continue; 
+    $processed = [];
+    $skippedCount = 0;
+    $successCount = 0;
 
-        $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    foreach ($rows as $index => $row) {
+        $name  = isset($row[0]) ? trim($row[0]) : '';
+        $email = isset($row[1]) ? strtolower(trim($row[1])) : '';
+        $rawLevel = isset($row[2]) ? strtolower(trim($row[2])) : 'admin';
+
+        if (empty($email) || empty($name)) continue; 
+
+        // Generate Secure 6-digit OTP
+        $otp = (string)random_int(100000, 999999);
         $hashedPassword = password_hash($otp, PASSWORD_DEFAULT);
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+48 hours'));
+
+        // Determine Level
+        $finalLevel = ($rawLevel === 'super admin' || $rawLevel === 'super_admin') ? 'super_admin' : 'admin';
 
         $stmt->execute([
-            ':name'  => trim($row[0]),
-            ':email' => $email,
-            ':pass'  => $hashedPassword,
-            ':level' => (!empty($row[2]) && strtolower(trim($row[2])) === 'super admin') ? 'super_admin' : 'admin'
+            ':name'    => $name,
+            ':email'   => $email,
+            ':pass'    => $hashedPassword,
+            ':level'   => $finalLevel,
+            ':otp'     => $otp,
+            ':expires' => $expiresAt
         ]);
         
-        // ONLY increment if the database actually added a new row
         if ($stmt->rowCount() > 0) {
-            $count++;
+            $successCount++;
+            // We collect these so the Superadmin can copy the passwords immediately
+            $processed[] = [
+                "name"  => $name,
+                "email" => $email,
+                "level" => $finalLevel,
+                "temp_pass" => $otp 
+            ];
+        } else {
+            $skippedCount++;
         }
     }
 
+    // 2. AUDIT LOGGING (The "Who did what")
+    $logStmt = $pdo->prepare("
+        INSERT INTO public.audit_logs (user_id, action_type, ip_address, details) 
+        VALUES (?, 'ADMIN_BULK_UPLOAD', ?, ?)
+    ");
+    
+    $details = json_encode([
+        "message" => "Superadmin uploaded $successCount new admin accounts",
+        "skipped" => $skippedCount,
+        "accounts" => array_map(function($a) { return $a['email'] . " (" . $a['level'] . ")"; }, $processed)
+    ]);
+
+    $logStmt->execute([$currentUser['id'], $_SERVER['REMOTE_ADDR'], $details]);
+
     $pdo->commit();
-    echo json_encode(["success" => true, "count" => $count]);
+
+    // 3. RETURN DATA TO FRONTEND
+    echo json_encode([
+        "success" => true, 
+        "count" => $successCount, 
+        "skipped" => $skippedCount,
+        "credentials" => $processed // Return this so Admin can distribute passwords
+    ]);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
+    error_log("Admin Upload Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["error" => $e->getMessage()]);
+    echo json_encode(["error" => "An internal error occurred while processing admin accounts."]);
 }

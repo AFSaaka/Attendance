@@ -1,29 +1,55 @@
 <?php
 // backend/api/admin/get-admins.php
-require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../common_auth.php'; 
+
+/**
+ * 1. SECURITY: Centralized Authorization
+ * requireSuperAdmin() should handle the 403 response and exit 
+ * if the user isn't a super_admin.
+ */
 requireSuperAdmin();
 
-// Security Check: Only super_admin can fetch the full list of admins
-// Assuming $currentUser is populated by common_auth.php
-if ($currentUser['admin_level'] !== 'super_admin') {
-    http_response_code(403);
-    exit(json_encode(["error" => "Unauthorized"]));
-}
+header("Content-Type: application/json");
 
 try {
-    // Use 'IN' to capture both types of admin roles you might have in your database
-$stmt = $pdo->query("
-    SELECT id, user_name, email, admin_level, is_active, created_at 
-    FROM public.users 
-    WHERE role = 'admin' 
-    OR role = 'super_admin'
-    OR admin_level = 'super_admin'
-    ORDER BY created_at DESC
-");
+    /**
+     * 2. PRECISE QUERY
+     * We select only necessary columns. 
+     * We ensure we are pulling users whose PRIMARY role is 'admin'.
+     */
+    $query = "
+        SELECT 
+            id, 
+            user_name, 
+            email, 
+            admin_level, 
+            is_active, 
+            created_at,
+            last_login -- Added to help Superadmins see who is active
+        FROM public.users 
+        WHERE role = 'admin' 
+        ORDER BY 
+            CASE WHEN admin_level = 'super_admin' THEN 1 ELSE 2 END, 
+            user_name ASC
+    ";
+
+    $stmt = $pdo->query($query);
     $admins = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode($admins);
-} catch (Exception $e) {
+
+    // 3. SECURE RESPONSE
+    // We wrap the result in a data object for better API extensibility
+    echo json_encode([
+        "status" => "success",
+        "total" => count($admins),
+        "data" => $admins
+    ]);
+
+} catch (PDOException $e) {
+    // Log real error internally, show generic to user
+    error_log("Get Admins Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["error" => $e->getMessage()]);
+    echo json_encode([
+        "status" => "error", 
+        "message" => "Internal Server Error: Could not retrieve admin list."
+    ]);
 }

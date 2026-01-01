@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   MapPin,
   ChevronDown,
@@ -11,10 +11,11 @@ import {
   PowerOff,
   Smartphone,
   Loader2,
+  AlertCircle,
 } from "lucide-react";
 import axios from "../api/axios";
-// Import the modal component we built
 import EditStudentModal from "./EditStudentModal";
+import ConfirmationModal from "./ConfirmationModal";
 
 const StudentList = () => {
   const [rawData, setRawData] = useState([]);
@@ -23,33 +24,94 @@ const StudentList = () => {
   const [actionLoading, setActionLoading] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Modal States
+  const [confirmConfig, setConfirmConfig] = useState({
+    isOpen: false,
+    id: null,
+    action: null,
+    title: "",
+    message: "",
+    type: "danger",
+  });
+
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentStudent, setCurrentStudent] = useState(null);
 
-  const fetchStudents = async () => {
+  // FETCH DATA
+  const fetchStudents = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await axios.get("/admin/get-students");
-      setRawData(res.data);
+      setRawData(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Fetch students error:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchStudents();
-  }, []);
+  }, [fetchStudents]);
 
-  const handleAction = async (id, action, confirmMessage) => {
-    if (confirmMessage && !window.confirm(confirmMessage)) return;
+  // ACTION HANDLERS
+  const triggerConfirm = (id, action) => {
+    const configs = {
+      delete: {
+        title: "Delete Student?",
+        message:
+          "This will permanently remove the student and all records. This cannot be undone.",
+        type: "danger",
+      },
+      clear_device: {
+        title: "Reset Device Lock?",
+        message: "The student will be able to log in from a new device.",
+        type: "info",
+      },
+      toggle_status: {
+        title: "Change Account Status?",
+        message:
+          "This will immediately enable or disable portal access for this student.",
+        type: "warning",
+      },
+    };
+
+    setConfirmConfig({
+      isOpen: true,
+      id,
+      action,
+      ...configs[action],
+    });
+  };
+
+  const executeAction = async () => {
+    const { id, action } = confirmConfig;
+    const loadingKey = `${id}-${action}`;
+
     try {
-      setActionLoading(`${id}-${action}`);
+      setActionLoading(loadingKey);
       await axios.post("/admin/student-actions", { id, action });
-      await fetchStudents();
+
+      // OPTIMISTIC UPDATES: Update local state instead of re-fetching everything
+      setRawData((prev) => {
+        if (action === "delete") {
+          return prev.filter((s) => s.id !== id);
+        }
+        return prev.map((s) => {
+          if (s.id === id) {
+            if (action === "toggle_status")
+              return { ...s, is_active: !s.is_active };
+            if (action === "clear_device") return { ...s, device_id: null };
+          }
+          return s;
+        });
+      });
+
+      setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
     } catch (err) {
-      alert("Action failed: " + (err.response?.data?.error || "Server error"));
+      const msg =
+        err.response?.data?.error ||
+        "Action failed. Please check your connection.";
+      alert(msg);
     } finally {
       setActionLoading(null);
     }
@@ -60,19 +122,23 @@ const StudentList = () => {
     setIsEditModalOpen(true);
   };
 
+  // GROUPING & FILTERING
   const groupedData = useMemo(() => {
-    const lowerSearch = searchTerm.toLowerCase();
+    const lowerSearch = searchTerm.trim().toLowerCase();
+
     return rawData
       .filter(
         (s) =>
-          s.full_name?.toLowerCase().includes(lowerSearch) ||
-          s.index_number?.toLowerCase().includes(lowerSearch) ||
-          s.uin?.toLowerCase().includes(lowerSearch)
+          !lowerSearch ||
+          [s.full_name, s.index_number, s.uin].some((f) =>
+            f?.toLowerCase().includes(lowerSearch)
+          )
       )
       .reduce((acc, s) => {
-        const r = s.region || "Unknown Region";
-        const d = s.district || "Unknown District";
-        const c = s.community || "Unknown Community";
+        const r = s.region || "Unassigned Region";
+        const d = s.district || "Unassigned District";
+        const c = s.community || "Unassigned Community";
+
         if (!acc[r]) acc[r] = {};
         if (!acc[r][d]) acc[r][d] = {};
         if (!acc[r][d][c]) acc[r][d][c] = [];
@@ -85,10 +151,17 @@ const StudentList = () => {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  if (loading) return <div style={styles.loading}>Loading database...</div>;
+  if (loading)
+    return (
+      <div style={styles.loading}>
+        <Loader2 className="animate-spin" size={24} />
+        <p>Loading student database...</p>
+      </div>
+    );
 
   return (
     <div style={styles.container}>
+      {/* SEARCH BAR */}
       <div style={styles.searchBarWrapper}>
         <div style={styles.searchInner}>
           <Search size={18} color="#64748b" />
@@ -106,208 +179,261 @@ const StudentList = () => {
         </div>
       </div>
 
+      {/* DATA LIST */}
       {Object.keys(groupedData).length === 0 ? (
         <div style={styles.noResults}>
-          No students found matching "{searchTerm}"
+          <AlertCircle size={32} style={{ marginBottom: 10, opacity: 0.5 }} />
+          <p>No students found matching "{searchTerm}"</p>
         </div>
       ) : (
-        Object.entries(groupedData).map(([region, districts]) => (
-          <div key={region} style={styles.regionSection}>
-            <div
-              style={styles.regionHeader}
-              onClick={() => toggleSection(region)}
-            >
-              {expandedSections[region] || searchTerm ? (
-                <ChevronDown size={18} />
-              ) : (
-                <ChevronRight size={18} />
-              )}
-              <MapPin size={16} color="#198104" />
-              <span style={{ fontWeight: "800" }}>{region}</span>
-            </div>
+        Object.entries(groupedData).map(([region, districts]) => {
+          const isRegionExpanded = expandedSections[region] || searchTerm;
+          return (
+            <div key={region} style={styles.regionSection}>
+              <div
+                style={styles.regionHeader}
+                onClick={() => toggleSection(region)}
+              >
+                {isRegionExpanded ? (
+                  <ChevronDown size={18} />
+                ) : (
+                  <ChevronRight size={18} />
+                )}
+                <MapPin size={16} color="#198104" />
+                <span style={{ fontWeight: "800" }}>{region}</span>
+              </div>
 
-            {(expandedSections[region] || searchTerm) &&
-              Object.entries(districts).map(([district, communities]) => (
-                <div key={district} style={styles.districtBlock}>
-                  <div
-                    style={styles.districtHeader}
-                    onClick={() => toggleSection(`${region}-${district}`)}
-                  >
-                    {expandedSections[`${region}-${district}`] || searchTerm ? (
-                      <ChevronDown size={14} />
-                    ) : (
-                      <ChevronRight size={14} />
-                    )}
-                    <span>
-                      District: <strong>{district}</strong>
-                    </span>
-                  </div>
+              {isRegionExpanded &&
+                Object.entries(districts).map(([district, communities]) => {
+                  const districtKey = `${region}-${district}`;
+                  const isDistrictExpanded =
+                    expandedSections[districtKey] || searchTerm;
 
-                  {(expandedSections[`${region}-${district}`] || searchTerm) &&
-                    Object.entries(communities).map(([community, students]) => (
-                      <div key={community} style={styles.communityBlock}>
-                        <div style={styles.communityLabel}>
-                          <div style={styles.dot} />
-                          <span>
-                            {community} ({students.length})
-                          </span>
-                        </div>
-
-                        <table style={styles.table}>
-                          <thead>
-                            <tr style={styles.theadRow}>
-                              <th style={{ ...styles.th, width: "35%" }}>
-                                Student Info
-                              </th>
-                              <th style={{ ...styles.th, width: "35%" }}>
-                                Academic Details
-                              </th>
-                              <th
-                                style={{
-                                  ...styles.th,
-                                  width: "30%",
-                                  textAlign: "center",
-                                }}
-                              >
-                                Actions
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {students.map((s) => (
-                              <tr key={s.id} style={styles.tr}>
-                                <td style={styles.td}>
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "8px",
-                                    }}
-                                  >
-                                    <span style={styles.primaryText}>
-                                      {s.full_name}
-                                    </span>
-                                    {s.is_claimed ? (
-                                      <span style={styles.badgeSuccess}>
-                                        Claimed
-                                      </span>
-                                    ) : (
-                                      <span style={styles.badgePending}>
-                                        Unclaimed
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div style={styles.secondaryText}>
-                                    UIN: {s.uin} | Index: {s.index_number}
-                                  </div>
-                                </td>
-                                <td style={styles.td}>
-                                  <div style={styles.locationText}>
-                                    {s.program}
-                                  </div>
-                                  <div style={styles.secondaryText}>
-                                    {s.level}
-                                  </div>
-                                </td>
-                                <td style={styles.td}>
-                                  <div style={styles.actionWrapper}>
-                                    {s.is_claimed && (
-                                      <>
-                                        <button
-                                          style={styles.btnDevice}
-                                          disabled={
-                                            actionLoading ===
-                                            `${s.id}-clear_device`
-                                          }
-                                          onClick={() =>
-                                            handleAction(
-                                              s.id,
-                                              "clear_device",
-                                              "Clear device lock?"
-                                            )
-                                          }
-                                          title="Clear Device"
-                                        >
-                                          {actionLoading ===
-                                          `${s.id}-clear_device` ? (
-                                            <Loader2
-                                              size={14}
-                                              className="animate-spin"
-                                            />
-                                          ) : (
-                                            <Smartphone size={14} />
-                                          )}
-                                        </button>
-                                        <button
-                                          style={
-                                            s.is_active
-                                              ? styles.btnDeactivate
-                                              : styles.btnActivate
-                                          }
-                                          disabled={
-                                            actionLoading ===
-                                            `${s.id}-toggle_status`
-                                          }
-                                          onClick={() =>
-                                            handleAction(s.id, "toggle_status")
-                                          }
-                                        >
-                                          {s.is_active ? (
-                                            <PowerOff size={14} />
-                                          ) : (
-                                            <Power size={14} />
-                                          )}
-                                        </button>
-                                      </>
-                                    )}
-                                    <button
-                                      style={styles.btnEdit}
-                                      onClick={() => openEditModal(s)}
-                                      title="Edit"
-                                    >
-                                      <Edit3 size={14} />
-                                    </button>
-                                    <button
-                                      style={styles.btnDelete}
-                                      onClick={() =>
-                                        handleAction(
-                                          s.id,
-                                          "delete",
-                                          "Delete this student?"
-                                        )
-                                      }
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                  return (
+                    <div key={district} style={styles.districtBlock}>
+                      <div
+                        style={styles.districtHeader}
+                        onClick={() => toggleSection(districtKey)}
+                      >
+                        {isDistrictExpanded ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronRight size={14} />
+                        )}
+                        <span>
+                          District: <strong>{district}</strong>
+                        </span>
                       </div>
-                    ))}
-                </div>
-              ))}
-          </div>
-        ))
+
+                      {isDistrictExpanded &&
+                        Object.entries(communities).map(
+                          ([community, students]) => (
+                            <div key={community} style={styles.communityBlock}>
+                              <div style={styles.communityLabel}>
+                                <div style={styles.dot} />
+                                <span>
+                                  {community} ({students.length})
+                                </span>
+                              </div>
+
+                              <table style={styles.table}>
+                                <thead>
+                                  <tr style={styles.theadRow}>
+                                    <th style={{ ...styles.th, width: "40%" }}>
+                                      Student Info
+                                    </th>
+                                    <th style={{ ...styles.th, width: "30%" }}>
+                                      Academic
+                                    </th>
+                                    <th
+                                      style={{
+                                        ...styles.th,
+                                        width: "30%",
+                                        textAlign: "center",
+                                      }}
+                                    >
+                                      Actions
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {students.map((s) => (
+                                    <tr key={s.id} style={styles.tr}>
+                                      <td style={styles.td}>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "8px",
+                                          }}
+                                        >
+                                          <span style={styles.primaryText}>
+                                            {s.full_name}
+                                          </span>
+                                          <span
+                                            style={
+                                              s.is_claimed
+                                                ? styles.badgeSuccess
+                                                : styles.badgePending
+                                            }
+                                          >
+                                            {s.is_claimed
+                                              ? "Claimed"
+                                              : "Unclaimed"}
+                                          </span>
+                                        </div>
+                                        <div style={styles.secondaryText}>
+                                          UIN: {s.uin} | Index: {s.index_number}
+                                        </div>
+                                      </td>
+                                      <td style={styles.td}>
+                                        <div style={styles.locationText}>
+                                          {s.program}
+                                        </div>
+                                        <div style={styles.secondaryText}>
+                                          Level {s.level}
+                                        </div>
+                                      </td>
+                                      <td style={styles.td}>
+                                        <div style={styles.actionWrapper}>
+                                          {/* 1. DEVICE RESET BUTTON (Only shows if student has claimed an account) */}
+                                          {s.is_claimed && (
+                                            <>
+                                              <button
+                                                style={styles.btnDevice}
+                                                disabled={!!actionLoading} // Disable all buttons if ANY action is running
+                                                onClick={() =>
+                                                  triggerConfirm(
+                                                    s.id,
+                                                    "clear_device"
+                                                  )
+                                                }
+                                                title="Reset Device Lock"
+                                              >
+                                                {actionLoading ===
+                                                `${s.id}-clear_device` ? (
+                                                  <Loader2
+                                                    size={14}
+                                                    className="animate-spin"
+                                                  />
+                                                ) : (
+                                                  <Smartphone size={14} />
+                                                )}
+                                              </button>
+
+                                              {/* 2. TOGGLE STATUS (Active/Inactive) */}
+                                              <button
+                                                style={
+                                                  s.is_active
+                                                    ? styles.btnDeactivate
+                                                    : styles.btnActivate
+                                                }
+                                                disabled={!!actionLoading}
+                                                onClick={() =>
+                                                  triggerConfirm(
+                                                    s.id,
+                                                    "toggle_status"
+                                                  )
+                                                }
+                                                title={
+                                                  s.is_active
+                                                    ? "Deactivate Student"
+                                                    : "Activate Student"
+                                                }
+                                              >
+                                                {actionLoading ===
+                                                `${s.id}-toggle_status` ? (
+                                                  <Loader2
+                                                    size={14}
+                                                    className="animate-spin"
+                                                  />
+                                                ) : s.is_active ? (
+                                                  <PowerOff size={14} />
+                                                ) : (
+                                                  <Power size={14} />
+                                                )}
+                                              </button>
+                                            </>
+                                          )}
+
+                                          {/* 3. EDIT BUTTON */}
+                                          <button
+                                            style={styles.btnEdit}
+                                            disabled={!!actionLoading}
+                                            onClick={() => openEditModal(s)}
+                                            title="Edit Details"
+                                          >
+                                            <Edit3 size={14} />
+                                          </button>
+
+                                          {/* 4. DELETE BUTTON */}
+                                          <button
+                                            style={styles.btnDelete}
+                                            disabled={!!actionLoading}
+                                            onClick={() =>
+                                              triggerConfirm(s.id, "delete")
+                                            }
+                                            title="Permanent Delete"
+                                          >
+                                            {actionLoading ===
+                                            `${s.id}-delete` ? (
+                                              <Loader2
+                                                size={14}
+                                                className="animate-spin"
+                                              />
+                                            ) : (
+                                              <Trash2 size={14} />
+                                            )}
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )
+                        )}
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })
       )}
 
-      {/* MODAL INTEGRATION */}
+      {/* MODALS */}
       <EditStudentModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         student={currentStudent}
         onUpdateSuccess={fetchStudents}
       />
+      <ConfirmationModal
+        isOpen={confirmConfig.isOpen}
+        isLoading={!!actionLoading}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        onClose={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={executeAction}
+      />
     </div>
   );
 };
 
-// ... Styles remain exactly as you provided them ...
+// ... Styles (Same as before but with minor fixes for centering) ...
 const styles = {
   container: { display: "flex", flexDirection: "column", gap: "15px" },
-  loading: { padding: "40px", textAlign: "center", color: "#64748b" },
+  loading: {
+    padding: "100px 40px",
+    textAlign: "center",
+    color: "#64748b",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "10px",
+  },
   searchBarWrapper: {
     display: "flex",
     justifyContent: "space-between",
@@ -449,7 +575,14 @@ const styles = {
     borderRadius: "6px",
     cursor: "pointer",
   },
-  noResults: { textAlign: "center", padding: "40px", color: "#64748b" },
+  noResults: {
+    textAlign: "center",
+    padding: "60px 40px",
+    color: "#64748b",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
 };
 
 export default StudentList;

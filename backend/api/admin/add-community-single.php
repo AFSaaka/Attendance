@@ -1,50 +1,89 @@
 <?php
-require_once __DIR__ . '/../../config/db.php';
+// backend/api/admin/add-community.php
 require_once __DIR__ . '/../common_auth.php';
 
-$data = json_decode(file_get_contents("php://input"), true);
+// 1. SECURITY: Only Admins/Superadmins
+requireAdmin();
 
+$data = json_decode(file_get_contents("php://input"), true);
+$admin_id = $currentUser['id'];
+
+// Comprehensive validation
 if (empty($data['name']) || empty($data['region']) || empty($data['district'])) {
     http_response_code(400);
     exit(json_encode(["error" => "Name, Region, and District are required."]));
 }
 
 try {
-    // Determine if coordinates are validly provided
-    $hasCoords = (!empty($data['latitude']) && !empty($data['longitude']));
-    $lat = $hasCoords ? (float)$data['latitude'] : null;
-    $lng = $hasCoords ? (float)$data['longitude'] : null;
+    $pdo->beginTransaction();
 
-    $sql = "INSERT INTO public.communities (name, region, district, latitude, longitude, location, start_date, duration_weeks)
+    /**
+     * 2. UNIFIED SQL UPSERT
+     * We use ST_SetSRID only if values are present.
+     * We use ON CONFLICT to allow admins to 'correct' existing community data.
+     */
+    $sql = "INSERT INTO public.communities 
+            (name, region, district, latitude, longitude, location, start_date, duration_weeks)
             VALUES (:name, :region, :district, :lat, :lng, 
-            " . ($hasCoords ? "ST_SetSRID(ST_MakePoint(:lng2, :lat2), 4326)" : "NULL") . ", 
-            :start_date, :duration)";
+                CASE 
+                    WHEN :lat_val IS NULL OR :lng_val IS NULL THEN NULL 
+                    ELSE ST_SetSRID(ST_MakePoint(:lng_ptr, :lat_ptr), 4326)::geography 
+                END, 
+                :start_date, :duration)
+            ON CONFLICT (name, region, district) 
+            DO UPDATE SET 
+                latitude = EXCLUDED.latitude,
+                longitude = EXCLUDED.longitude,
+                location = EXCLUDED.location,
+                start_date = EXCLUDED.start_date,
+                duration_weeks = EXCLUDED.duration_weeks,
+                updated_at = NOW()
+            RETURNING id";
 
     $stmt = $pdo->prepare($sql);
     
-    $params = [
-        ':name'     => trim($data['name']),
-        ':region'   => trim($data['region']),
-        ':district' => trim($data['district']),
-        ':lat'      => $lat,
-        ':lng'      => $lng,
-        ':start_date' => !empty($data['start_date']) ? $data['start_date'] : null,
-        ':duration'   => !empty($data['duration_weeks']) ? (int)$data['duration_weeks'] : 5
-    ];
+    // Formatting data
+    $lat = (isset($data['latitude']) && is_numeric($data['latitude'])) ? (float)$data['latitude'] : null;
+    $lng = (isset($data['longitude']) && is_numeric($data['longitude'])) ? (float)$data['longitude'] : null;
 
-    if ($hasCoords) {
-        $params[':lng2'] = $lng;
-        $params[':lat2'] = $lat;
-    }
+    $stmt->execute([
+        'name'       => trim($data['name']),
+        'region'     => trim($data['region']),
+        'district'   => trim($data['district']),
+        'lat'        => $lat,
+        'lng'        => $lng,
+        'lat_val'    => $lat,
+        'lng_val'    => $lng,
+        'lat_ptr'    => $lat,
+        'lng_ptr'    => $lng,
+        'start_date' => !empty($data['start_date']) ? $data['start_date'] : null,
+        'duration'   => !empty($data['duration_weeks']) ? (int)$data['duration_weeks'] : 5
+    ]);
+    
+    $community_id = $stmt->fetchColumn();
 
-    $stmt->execute($params);
-    echo json_encode(["success" => true]);
+    // 3. AUDIT LOGGING
+    $logStmt = $pdo->prepare("
+        INSERT INTO public.audit_logs (user_id, action_type, ip_address, details) 
+        VALUES (?, 'COMMUNITY_MANUAL_CREATE', ?, ?)
+    ");
+    
+    $details = json_encode([
+        "message" => "Admin created/updated community: " . $data['name'],
+        "location" => $data['district'] . ", " . $data['region'],
+        "has_gps" => ($lat !== null)
+    ]);
+
+    $logStmt->execute([$admin_id, $_SERVER['REMOTE_ADDR'], $details]);
+
+    $pdo->commit();
+    echo json_encode(["success" => true, "message" => "Community saved successfully."]);
 
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    
+    // Mask detailed DB errors for security
+    error_log("Add Community Error: " . $e->getMessage());
     http_response_code(500);
-    if ($e->getCode() == 23505) {
-        echo json_encode(["error" => "Community already exists in this district."]);
-    } else {
-        echo json_encode(["error" => "Database Error: " . $e->getMessage()]);
-    }
+    echo json_encode(["error" => "Internal Server Error: Could not save community."]);
 }

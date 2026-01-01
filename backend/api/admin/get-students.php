@@ -44,27 +44,28 @@ try {
      * We use an INNER JOIN because we only want students who are 
      * actually enrolled in the active session we found above.
      */
-    $stmt = $pdo->prepare("
-        SELECT 
-            sr.id, 
-            sr.uin, 
-            sr.index_number, 
-            sr.full_name, 
-            sr.is_claimed,
-            se.program, 
-            se.region, 
-            se.district, 
-            se.community, 
-            se.level,
-            u.email,
-            u.is_active
-        FROM public.student_registry sr
-        INNER JOIN public.student_enrollments se ON sr.id = se.registry_id
-        LEFT JOIN public.users u ON sr.id = u.student_id
-        WHERE se.session_id = ? 
-          AND sr.is_deleted = false  -- SAFETY: Hide students marked as deleted
-        ORDER BY se.region ASC, sr.full_name ASC
-    ");
+   $stmt = $pdo->prepare("
+    SELECT 
+        sr.id, 
+        sr.uin, 
+        sr.index_number, 
+        sr.full_name, 
+        sr.is_claimed,
+        se.program, 
+        se.region, 
+        se.district, 
+        se.community, 
+        se.level,
+        u.email,
+        -- If user record doesn't exist (unclaimed), we assume they are 'inactive' for UI purposes
+        COALESCE(u.is_active, false) as is_active
+    FROM public.student_registry sr
+    INNER JOIN public.student_enrollments se ON sr.id = se.registry_id
+    LEFT JOIN public.users u ON sr.id = u.student_id
+    WHERE se.session_id = ? 
+      AND sr.is_deleted = false  -- Correctly hiding soft-deleted students
+    ORDER BY se.region ASC, se.district ASC, sr.full_name ASC
+");
     
     $stmt->execute([$session_id]);
     $students = $stmt->fetchAll(PDO::FETCH_ASSOC);

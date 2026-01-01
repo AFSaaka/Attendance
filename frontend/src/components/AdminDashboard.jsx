@@ -6,11 +6,13 @@ import axios from "../api/axios";
 import StudentModal from "./StudentModal";
 import CoordinatorModal from "./CoordinatorModal";
 import CommunityModal from "./CommunityModal";
-import AdminModal from "./AdminModal"; // NEW IMPORT
+import AdminModal from "./AdminModal";
 import CoordinatorList from "./CoordinatorList";
 import StudentList from "./StudentList";
 import CommunityList from "./CommunityList";
 import AdminList from "./AdminList";
+import RecentActivity from "./RecentActivity";
+import AttendanceExportModal from "./AttendanceExportModal";
 import {
   Users,
   MapPin,
@@ -21,45 +23,71 @@ import {
   GraduationCap,
   Map,
   Lock, // Icon for Admin tab
+  Archive,
 } from "lucide-react";
 
 const AdminDashboard = ({ user, onLogout }) => {
-  const [stats, setStats] = useState({
-    students: 0,
-    communities: 0,
-    coordinators: 0,
-    admins: 0, // Added admin stat
-  });
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    registered_students: 0,
+    total_students: 0,
+    total_communities: 0,
+    active_coordinators: 0,
+  });
+
   const [activeTab, setActiveTab] = useState("overview");
   const [activeModal, setActiveModal] = useState(null);
-
-  const handleAddAction = (actionType) => {
-    setActiveModal(actionType);
-  };
-
+  const handleAddAction = (actionType) => setActiveModal(actionType);
   const closeModal = () => setActiveModal(null);
-
-  const fetchStats = () => {
+  const fetchStats = async () => {
     setLoading(true);
-    axios
-      .get("/admin/stats")
-      .then((res) => {
+    setError(null);
+    try {
+      const res = await axios.get("/admin/stats");
+      // Check for the production structure: res.data.stats
+      if (res.data && res.data.stats) {
+        setStats(res.data.stats);
+      } else if (res.data && !res.data.stats) {
+        // Fallback if your PHP isn't nesting under 'stats' yet
         setStats(res.data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Admin Stats Error:", err);
-        setLoading(false);
-      });
+      }
+    } catch (err) {
+      console.error("Dashboard Load Failure:", err);
+      setError("Failed to load metrics. Please refresh.");
+    } finally {
+      setLoading(false);
+    }
   };
-
   useEffect(() => {
     fetchStats();
   }, []);
-
+  const renderStat = (value) =>
+    loading ? "..." : value?.toLocaleString() || 0;
   const styles = {
-    // ... (Keeping your existing styles)
+    topBar: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "20px",
+      padding: "0 10px",
+    },
+
+    exportTriggerBtn: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      backgroundColor: "#1e293b",
+      color: "white",
+      padding: "10px 16px",
+      borderRadius: "8px",
+      border: "none",
+      fontWeight: "600",
+      cursor: "pointer",
+      transition: "background 0.2s",
+    },
+
     container: {
       minHeight: "100vh",
       display: "flex",
@@ -122,6 +150,21 @@ const AdminDashboard = ({ user, onLogout }) => {
       <Navbar onLogout={onLogout} userEmail={user?.email} />
 
       <main style={styles.main}>
+        {/* Combine AdminHeader and the Title/Export Bar for a cleaner look */}
+        <div style={styles.topBar}>
+          <h1 style={{ fontSize: "24px", color: "#1e293b", margin: 0 }}>
+            SuperAdmin Control Panel
+          </h1>
+
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            style={styles.exportTriggerBtn}
+          >
+            <Archive size={18} />
+            Export Center
+          </button>
+        </div>
+
         <header style={{ marginBottom: "20px" }}>
           <AdminHeader user={user} onAction={handleAddAction} />
         </header>
@@ -208,35 +251,41 @@ const AdminDashboard = ({ user, onLogout }) => {
         {activeTab === "overview" && (
           <>
             <div style={styles.statGrid}>
+              {/* 1. Student Card */}
               <div style={styles.statCard}>
-                <Users
-                  size={24}
-                  color="#198104"
-                  style={{ marginBottom: "10px" }}
-                />
-                <h3>{loading ? "..." : stats.students.toLocaleString()}</h3>
-                <p>Total Students</p>
+                <Users size={24} color="#198104" />
+                <h3>
+                  {loading
+                    ? "..."
+                    : `${stats.registered_students}/${stats.total_students}`}
+                </h3>
+                <p>Registered Students</p>
+                {error && <small style={{ color: "red" }}>{error}</small>}
               </div>
+
+              {/* 2. Coordinator Card */}
               <div style={styles.statCard}>
                 <ShieldCheck
                   size={24}
                   color="#198104"
                   style={{ marginBottom: "10px" }}
                 />
-                <h3>{loading ? "..." : stats.coordinators}</h3>
+                <h3>{loading ? "..." : stats.active_coordinators || 0}</h3>
                 <p>Coordinators</p>
               </div>
+
+              {/* 3. Communities Card */}
               <div style={styles.statCard}>
                 <MapPin
                   size={24}
                   color="#198104"
                   style={{ marginBottom: "10px" }}
                 />
-                <h3>{loading ? "..." : stats.communities}</h3>
+                <h3>{loading ? "..." : stats.total_communities || 0}</h3>
                 <p>Communities</p>
               </div>
-              {/* Optional: Add Admin stat card here if desired */}
             </div>
+
             <div style={styles.contentCard}>
               <div
                 style={{
@@ -249,7 +298,20 @@ const AdminDashboard = ({ user, onLogout }) => {
                 <Activity size={20} color="#666" />
                 <h3 style={{ margin: 0 }}>Recent System Activity</h3>
               </div>
-              <p style={{ color: "#666" }}>Logs will appear here...</p>
+              {/* SECURITY: Only show content to superadmins */}
+              {user?.admin_level === "super_admin" ? (
+                <RecentActivity />
+              ) : (
+                <div
+                  style={{
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "#666",
+                  }}
+                >
+                  <p>Activity logs are restricted to Super Administrators.</p>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -291,6 +353,11 @@ const AdminDashboard = ({ user, onLogout }) => {
             <AdminList />
           </div>
         )}
+        {/* The Modal Component */}
+        <AttendanceExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+        />
       </main>
 
       <Footer />
