@@ -31,6 +31,10 @@ $routes = [
     'admin/add-coordinator' => '../api/admin/add-coordinator.php',
     'admin/get-coordinators' => '../api/admin/get-coordinators.php',
     'admin/get-students' => '../api/admin/get-students.php',
+    'admin/manage_community' => '../api/admin/manage_community.php',
+    'admin/edit_community' => '../api/admin/edit_community.php',
+    'admin/get-academic-sessions' => '../api/admin/get-academic-sessions.php',
+    'admin/manage_session' => '../api/admin/manage_session.php',
     'admin/get-system-activity' => '../api/admin/get-system-activity.php',
     'admin/generate-log-file' => '../api/admin/generate-log-file.php',
     'admin/upload-communities' => '../api/admin/upload-communities.php',
@@ -50,10 +54,10 @@ $routes = [
     'student/sync_attendance' => '../api/student/sync_attendance.php',
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
-    'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
-    'coordinator/get_attendance' => '../api/coordinator/get_attendance.php',
-    'coordinator/get-communities' => '../api/coordinator/get-communities.php',
-    'coordinator/set-community-start-date' => '../api/coordinator/set-community-start-date.php',
+    // 'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
+    // 'coordinator/get_attendance' => '../api/coordinator/get_attendance.php',
+    // 'coordinator/get-communities' => '../api/coordinator/get-communities.php',
+    // 'coordinator/set-community-start-date' => '../api/coordinator/set-community-start-date.php',
 ];
 
 if (array_key_exists($url, $routes)) {

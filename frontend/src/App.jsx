@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react"; // FIX 1: Added useEffect here
+import React, { useState, useEffect } from "react";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import axios from "./api/axios";
 import udsLogo from "./assets/udslogo.ico";
 import InputField from "./components/inputField";
@@ -14,11 +15,11 @@ import ErrorBoundary from "./components/ErrorBoundary";
 function App() {
   const [view, setView] = useState("login");
   const [user, setUser] = useState(null);
-  // NEW STATE: This stops the flickering
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { location, resetLocation, refreshGPS } = useGeolocation();
   const [focusedField, setFocusedField] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -28,7 +29,7 @@ function App() {
   });
   const [message, setMessage] = useState({ type: "", text: "" });
 
-  // UPDATED Recovery logic
+  // Session Recovery
   useEffect(() => {
     const recoverSession = async () => {
       try {
@@ -39,15 +40,13 @@ function App() {
       } catch (error) {
         console.error("Session recovery failed");
       } finally {
-        // This is the most important part:
-        // We wait for the check to finish before removing the loader
         setIsCheckingAuth(false);
       }
     };
-
     recoverSession();
   }, []);
-  // Timer logic: Clears messages after 5 seconds
+
+  // Message Timer
   useEffect(() => {
     if (message.text) {
       const timer = setTimeout(() => {
@@ -62,19 +61,6 @@ function App() {
     if (message.text) setMessage({ type: "", text: "" });
   };
 
-  const isLoginValid = formData.email && formData.password;
-  const isSignupValid =
-    formData.uin &&
-    formData.indexNumber &&
-    formData.email &&
-    formData.password &&
-    formData.password === formData.confirmPassword;
-
-  const handleViewChange = (newView) => {
-    setMessage({ type: "", text: "" });
-    setView(newView);
-  };
-
   const handleAction = async () => {
     setIsLoading(true);
     setMessage({ type: "", text: "" });
@@ -85,60 +71,33 @@ function App() {
 
       if (response.data.status === "success") {
         if (view === "login") {
-          setUser(response.data.user);
-          localStorage.setItem("uds_user", JSON.stringify(response.data.user));
+          const userData = response.data.user;
+          setUser(userData);
+          localStorage.setItem("uds_user", JSON.stringify(userData));
         } else {
-          // Registration success: move to verify view
           setMessage({ type: "success", text: response.data.message });
           setTimeout(() => setView("verify"), 1000);
         }
       }
     } catch (error) {
       const data = error.response?.data;
-
-      // FIX: If login fails because of verification (403 status)
       if (error.response?.status === 403 && data?.requires_verification) {
         setMessage({ type: "error", text: data.message });
-
-        // Update email in formData just in case, then redirect to OTP
         setFormData((prev) => ({ ...prev, email: data.email || prev.email }));
-
-        // Delay briefly so they can read the error message before the screen switches
         setTimeout(() => setView("verify"), 2000);
         return;
       }
-
-      // Standard error handling
-      const errorMsg =
-        data?.message || "Action failed. Please check your connection.";
-      setMessage({ type: "error", text: errorMsg });
+      setMessage({ type: "error", text: data?.message || "Action failed." });
     } finally {
       setIsLoading(false);
     }
   };
+
   const handleLogout = () => {
     localStorage.removeItem("uds_user");
     setUser(null);
     setView("login");
-    resetLocation(); // Clear GPS data so the next user starts fresh
-  };
-
-  const handleResendOtp = async () => {
-    if (isLoading) return;
-    setIsLoading(true);
-    try {
-      const response = await axios.post("auth/resend_otp", {
-        email: formData.email,
-      });
-      setMessage({ type: "success", text: response.data.message });
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.response?.data?.message || "Could not resend code.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    resetLocation();
   };
 
   const handleVerifyOtp = async (otpCode) => {
@@ -156,219 +115,226 @@ function App() {
     }
   };
 
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    const isValid = view === "login" ? isLoginValid : isSignupValid;
-    if (isValid && !isLoading) handleAction();
+  if (isCheckingAuth) return <FullScreenLoader />;
+
+  // --- Protected Route Logic ---
+  // If user is logged in, show their dashboard. If not, show Login.
+  const AuthGuard = ({ children, allowedRole }) => {
+    if (!user) return <Navigate to="/" replace />;
+    if (allowedRole && user.role !== allowedRole)
+      return <Navigate to="/" replace />;
+    return children;
   };
 
-  // Styles
-  const wrapperStyle = {
+  return (
+    <div style={styles.wrapperStyle}>
+      <ErrorBoundary>
+        <Routes>
+          {/* 1. PUBLIC AUTH ROUTE */}
+          <Route
+            path="/"
+            element={
+              user ? (
+                // Redirect to appropriate dashboard if already logged in
+                user.role === "admin" ? (
+                  <Navigate to="/admin" replace />
+                ) : user.role === "coordinator" ? (
+                  <Navigate to="/coordinator" replace />
+                ) : (
+                  <Navigate to="/student" replace />
+                )
+              ) : (
+                <div style={styles.cardStyle}>
+                  <img
+                    src={udsLogo}
+                    alt="UDS"
+                    style={{ width: "60px", marginBottom: "10px" }}
+                  />
+
+                  {message.text && (
+                    <div
+                      style={{
+                        ...styles.alertBox,
+                        backgroundColor:
+                          message.type === "error" ? "#fff1f0" : "#f6ffed",
+                        color: message.type === "error" ? "#cf1322" : "#389e0d",
+                        border: `1px solid ${
+                          message.type === "error" ? "#ffa39e" : "#b7eb8f"
+                        }`,
+                      }}
+                    >
+                      {message.text}
+                    </div>
+                  )}
+
+                  {view === "verify" ? (
+                    <OtpInput
+                      email={formData.email}
+                      onVerify={handleVerifyOtp}
+                      isLoading={isLoading}
+                      onResend={() => {}}
+                      onContinue={() => {
+                        setMessage({
+                          type: "success",
+                          text: "Verified! Please login.",
+                        });
+                        setView("login");
+                      }}
+                    />
+                  ) : (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleAction();
+                      }}
+                    >
+                      <h2 style={{ margin: "0 0 5px 0" }}>UDS</h2>
+                      <p style={styles.subTitle}>TTFPP Portal</p>
+
+                      {view === "login" ? (
+                        <>
+                          <InputField
+                            name="email"
+                            placeholder="Email Address"
+                            value={formData.email}
+                            onChange={handleChange}
+                          />
+                          <InputField
+                            name="password"
+                            type="password"
+                            placeholder="Password"
+                            value={formData.password}
+                            onChange={handleChange}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          {["uin", "indexNumber", "email"].map((f) => (
+                            <InputField
+                              key={f}
+                              name={f}
+                              placeholder={f.toUpperCase()}
+                              value={formData[f]}
+                              onChange={handleChange}
+                            />
+                          ))}
+                          <InputField
+                            name="password"
+                            type="password"
+                            placeholder="Create Password"
+                            value={formData.password}
+                            onChange={handleChange}
+                          />
+                          <InputField
+                            name="confirmPassword"
+                            type="password"
+                            placeholder="Confirm Password"
+                            value={formData.confirmPassword}
+                            onChange={handleChange}
+                          />
+                        </>
+                      )}
+
+                      <PrimaryButton
+                        type="submit"
+                        isLoading={isLoading}
+                        disabled={
+                          view === "login"
+                            ? !(formData.email && formData.password)
+                            : false
+                        }
+                      >
+                        {view === "login" ? "Login" : "Create Account"}
+                      </PrimaryButton>
+
+                      <p style={{ marginTop: "20px", fontSize: "13px" }}>
+                        {view === "login"
+                          ? "New student? "
+                          : "Already registered? "}
+                        <span
+                          onClick={() =>
+                            setView(view === "login" ? "signup" : "login")
+                          }
+                          style={styles.toggleLink}
+                        >
+                          {view === "login" ? "Claim Account" : "Login here"}
+                        </span>
+                      </p>
+                    </form>
+                  )}
+                </div>
+              )
+            }
+          />
+
+          {/* 2. PROTECTED DASHBOARD ROUTES */}
+          <Route
+            path="/admin/*"
+            element={
+              <AuthGuard allowedRole="admin">
+                <AdminDashboard user={user} onLogout={handleLogout} />
+              </AuthGuard>
+            }
+          />
+
+          <Route
+            path="/coordinator/*"
+            element={
+              <AuthGuard allowedRole="coordinator">
+                <CoordinatorDashboard user={user} onLogout={handleLogout} />
+              </AuthGuard>
+            }
+          />
+
+          <Route
+            path="/student"
+            element={
+              <AuthGuard allowedRole="student">
+                <StudentDashboard
+                  user={user}
+                  location={location}
+                  onLogout={handleLogout}
+                  onRefreshGPS={refreshGPS}
+                />
+              </AuthGuard>
+            }
+          />
+
+          {/* 3. CATCH-ALL REDIRECT */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ErrorBoundary>
+    </div>
+  );
+}
+
+const styles = {
+  wrapperStyle: {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     width: "100vw",
     minHeight: "100vh",
     backgroundColor: "#f0f2f5",
-  };
-  const cardStyle = {
+  },
+  cardStyle: {
     width: "90%",
     maxWidth: "340px",
     backgroundColor: "#fff",
     padding: "30px 25px",
     borderRadius: "15px",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
     textAlign: "center",
-  };
-  if (isCheckingAuth) {
-    return <FullScreenLoader />;
-  }
-  return (
-    <div style={wrapperStyle}>
-      <ErrorBoundary>
-        {user ? (
-          <>
-            {user.role === "admin" && (
-              <AdminDashboard user={user} onLogout={handleLogout} />
-            )}
-            {user.role === "coordinator" && (
-              <CoordinatorDashboard user={user} onLogout={handleLogout} />
-            )}
-            {user.role === "student" && (
-              <StudentDashboard
-                user={user}
-                location={location}
-                onLogout={handleLogout}
-                onRefreshGPS={refreshGPS} // Pass it here
-              />
-            )}
-          </>
-        ) : (
-          <div style={cardStyle}>
-            <img
-              src={udsLogo}
-              alt="UDS"
-              style={{ width: "60px", marginBottom: "10px" }}
-            />
-
-            {message.text && (
-              <div
-                style={{
-                  padding: "10px",
-                  marginBottom: "15px",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  backgroundColor:
-                    message.type === "error" ? "#fff1f0" : "#f6ffed",
-                  color: message.type === "error" ? "#cf1322" : "#389e0d",
-                  border: `1px solid ${
-                    message.type === "error" ? "#ffa39e" : "#b7eb8f"
-                  }`,
-                }}
-              >
-                {message.text}
-              </div>
-            )}
-
-            {view === "verify" ? (
-              <OtpInput
-                email={formData.email}
-                onVerify={handleVerifyOtp}
-                isLoading={isLoading}
-                onResend={handleResendOtp}
-                onContinue={() => {
-                  setMessage({
-                    type: "success",
-                    text: "Verified! Please login with your password.",
-                  });
-                  setView("login");
-                }}
-              />
-            ) : (
-              <form onSubmit={handleFormSubmit}>
-                {view === "login" ? (
-                  <>
-                    <h2 style={{ margin: "0 0 5px 0" }}>UDS</h2>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#777",
-                        marginBottom: "20px",
-                      }}
-                    >
-                      TTFPP Portal
-                    </p>
-                    <InputField
-                      name="email"
-                      placeholder="Email Address"
-                      value={formData.email}
-                      onChange={handleChange}
-                      isFocused={focusedField === "email"}
-                      onFocus={() => setFocusedField("email")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <InputField
-                      name="password"
-                      type="password"
-                      placeholder="Password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      isFocused={focusedField === "password"}
-                      onFocus={() => setFocusedField("password")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <PrimaryButton
-                      type="submit"
-                      disabled={!isLoginValid}
-                      isLoading={isLoading}
-                    >
-                      Login
-                    </PrimaryButton>
-                    <p style={{ marginTop: "20px", fontSize: "13px" }}>
-                      New student?{" "}
-                      <span
-                        onClick={() => handleViewChange("signup")}
-                        style={{
-                          color: "#0c0481",
-                          cursor: "pointer",
-                          fontWeight: "600",
-                        }}
-                      >
-                        Claim Account
-                      </span>
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <h2 style={{ margin: "0 0 5px 0" }}>Account</h2>
-                    {["uin", "indexNumber", "email"].map((f) => (
-                      <InputField
-                        key={f}
-                        name={f}
-                        placeholder={
-                          f === "uin"
-                            ? "UIN"
-                            : f === "indexNumber"
-                            ? "INDEX NUMBER"
-                            : "EMAIL ADDRESS"
-                        }
-                        value={formData[f]}
-                        onChange={handleChange}
-                        isFocused={focusedField === f}
-                        onFocus={() => setFocusedField(f)}
-                        onBlur={() => setFocusedField(null)}
-                      />
-                    ))}
-                    <InputField
-                      name="password"
-                      type="password"
-                      placeholder="Create Password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      isFocused={focusedField === "password"}
-                      onFocus={() => setFocusedField("password")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <InputField
-                      name="confirmPassword"
-                      type="password"
-                      placeholder="Confirm Password"
-                      value={formData.confirmPassword}
-                      onChange={handleChange}
-                      isFocused={focusedField === "confirmPassword"}
-                      onFocus={() => setFocusedField("confirmPassword")}
-                      onBlur={() => setFocusedField(null)}
-                    />
-                    <PrimaryButton
-                      type="submit"
-                      disabled={!isSignupValid}
-                      isLoading={isLoading}
-                    >
-                      Create Account
-                    </PrimaryButton>
-                    <p style={{ marginTop: "20px", fontSize: "13px" }}>
-                      Already registered?{" "}
-                      <span
-                        onClick={() => handleViewChange("login")}
-                        style={{
-                          color: "#045204",
-                          cursor: "pointer",
-                          fontWeight: "600",
-                        }}
-                      >
-                        Login here
-                      </span>
-                    </p>
-                  </>
-                )}
-              </form>
-            )}
-          </div>
-        )}
-      </ErrorBoundary>
-    </div>
-  );
-}
+    boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+  },
+  subTitle: { fontSize: "14px", color: "#777", marginBottom: "20px" },
+  alertBox: {
+    padding: "10px",
+    marginBottom: "15px",
+    borderRadius: "8px",
+    fontSize: "12px",
+    fontWeight: "500",
+  },
+  toggleLink: { color: "#0c0481", cursor: "pointer", fontWeight: "600" },
+};
 
 export default App;

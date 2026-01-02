@@ -24,8 +24,8 @@ try {
         SELECT 
             (SELECT COUNT(*)::int FROM public.students) as registered_students,
             (SELECT COUNT(*)::int FROM public.student_enrollments WHERE session_id = :sid) as total_students,
-            (SELECT COUNT(*)::int FROM public.communities) as total_communities,
-            (SELECT COUNT(*)::int FROM public.coordinators) as active_coordinators
+            (SELECT COUNT(*)::int FROM public.communities) as total_communities
+            
     ";
 
     $stmt = $pdo->prepare($sql);
@@ -38,7 +38,7 @@ try {
             "registered_students" => $data['registered_students'],
             "total_students"      => $data['total_students'],
             "total_communities"   => $data['total_communities'],
-            "active_coordinators" => $data['active_coordinators'],
+           
         ],
         "session_context" => $session_id
     ]);

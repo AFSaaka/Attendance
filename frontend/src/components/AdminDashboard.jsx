@@ -1,32 +1,41 @@
 import React, { useState, useEffect } from "react";
+import {
+  Routes,
+  Route,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import Navbar from "./navBar";
 import Footer from "./footer";
 import AdminHeader from "./AdminHeader";
 import axios from "../api/axios";
 import StudentModal from "./StudentModal";
-import CoordinatorModal from "./CoordinatorModal";
 import CommunityModal from "./CommunityModal";
 import AdminModal from "./AdminModal";
-import CoordinatorList from "./CoordinatorList";
 import StudentList from "./StudentList";
 import CommunityList from "./CommunityList";
 import AdminList from "./AdminList";
 import RecentActivity from "./RecentActivity";
 import AttendanceExportModal from "./AttendanceExportModal";
+import SessionManager from "./SessionManager"; // The component we just finished
+
 import {
   Users,
   MapPin,
   ShieldCheck,
   Activity,
   LayoutDashboard,
-  UserCog,
   GraduationCap,
   Map,
-  Lock, // Icon for Admin tab
+  Lock,
   Archive,
+  CalendarDays, // New icon for sessions
 } from "lucide-react";
 
 const AdminDashboard = ({ user, onLogout }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,60 +43,41 @@ const AdminDashboard = ({ user, onLogout }) => {
     registered_students: 0,
     total_students: 0,
     total_communities: 0,
-    active_coordinators: 0,
   });
 
-  const [activeTab, setActiveTab] = useState("overview");
   const [activeModal, setActiveModal] = useState(null);
+
+  const getActiveTab = () => {
+    const path = location.pathname;
+    if (path.includes("/students")) return "students";
+    if (path.includes("/communities")) return "communities";
+    if (path.includes("/admins")) return "admins";
+    if (path.includes("/sessions")) return "sessions";
+    return "overview";
+  };
+
   const handleAddAction = (actionType) => setActiveModal(actionType);
   const closeModal = () => setActiveModal(null);
+
   const fetchStats = async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await axios.get("/admin/stats");
-      // Check for the production structure: res.data.stats
-      if (res.data && res.data.stats) {
-        setStats(res.data.stats);
-      } else if (res.data && !res.data.stats) {
-        // Fallback if your PHP isn't nesting under 'stats' yet
-        setStats(res.data);
-      }
+      setStats(res.data?.stats || res.data);
     } catch (err) {
       console.error("Dashboard Load Failure:", err);
-      setError("Failed to load metrics. Please refresh.");
+      setError("Failed to load metrics.");
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchStats();
   }, []);
-  const renderStat = (value) =>
-    loading ? "..." : value?.toLocaleString() || 0;
+
   const styles = {
-    topBar: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px",
-      padding: "0 10px",
-    },
-
-    exportTriggerBtn: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      backgroundColor: "#1e293b",
-      color: "white",
-      padding: "10px 16px",
-      borderRadius: "8px",
-      border: "none",
-      fontWeight: "600",
-      cursor: "pointer",
-      transition: "background 0.2s",
-    },
-
     container: {
       minHeight: "100vh",
       display: "flex",
@@ -102,6 +92,37 @@ const AdminDashboard = ({ user, onLogout }) => {
       margin: "0 auto",
       width: "100%",
     },
+    topBar: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: "20px",
+    },
+    actionGroup: { display: "flex", gap: "10px" },
+    exportTriggerBtn: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      backgroundColor: "#1e293b",
+      color: "white",
+      padding: "10px 16px",
+      borderRadius: "8px",
+      border: "none",
+      fontWeight: "600",
+      cursor: "pointer",
+    },
+    sessionBtn: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      backgroundColor: "#198104",
+      color: "white",
+      padding: "10px 16px",
+      borderRadius: "8px",
+      border: "none",
+      fontWeight: "600",
+      cursor: "pointer",
+    },
     tabContainer: {
       display: "flex",
       gap: "20px",
@@ -115,27 +136,26 @@ const AdminDashboard = ({ user, onLogout }) => {
       display: "flex",
       alignItems: "center",
       gap: "8px",
-      border: "none",
-      background: "none",
+      textDecoration: "none",
       fontWeight: "600",
       color: "#64748b",
       borderBottom: "3px solid transparent",
       transition: "all 0.2s ease",
-      whiteSpace: "nowrap",
     },
     activeTab: { color: "#198104", borderBottom: "3px solid #198104" },
     statGrid: {
       display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+      gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
       gap: "20px",
       marginBottom: "30px",
     },
     statCard: {
-      backgroundColor: "#fff",
+      backgroundColor: "#ffffffff",
       padding: "20px",
       borderRadius: "12px",
       textAlign: "center",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+      border: "none",
+      boxShadow: "2px 2px 2px  rgba(3, 194, 18, 1)",
     },
     contentCard: {
       backgroundColor: "#fff",
@@ -145,94 +165,175 @@ const AdminDashboard = ({ user, onLogout }) => {
     },
   };
 
+  const OverviewContent = () => (
+    <>
+      <div style={styles.statGrid}>
+        <div style={styles.statCard}>
+          <Users size={24} color="#198104" />
+          <h3>
+            {loading
+              ? "..."
+              : `${stats.registered_students}/${stats.total_students}`}
+          </h3>
+          <p>Registered Students</p>
+          {error && <small style={{ color: "red" }}>{error}</small>}
+        </div>
+        <div style={styles.statCard}>
+          <MapPin size={24} color="#198104" style={{ marginBottom: "10px" }} />
+          <h3>{loading ? "..." : stats.total_communities || 0}</h3>
+          <p>Communities</p>
+        </div>
+      </div>
+
+      <div style={styles.contentCard}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            marginBottom: "15px",
+          }}
+        >
+          <Activity size={20} color="#666" />
+          <h3 style={{ margin: 0 }}>Recent System Activity</h3>
+        </div>
+        {user?.admin_level === "super_admin" ? (
+          <RecentActivity />
+        ) : (
+          <div style={{ padding: "20px", textAlign: "center", color: "#666" }}>
+            <p>Activity logs are restricted to Super Administrators.</p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  const activeTabName = getActiveTab();
+
   return (
     <div style={styles.container}>
       <Navbar onLogout={onLogout} userEmail={user?.email} />
 
       <main style={styles.main}>
-        {/* Combine AdminHeader and the Title/Export Bar for a cleaner look */}
         <div style={styles.topBar}>
           <h1 style={{ fontSize: "24px", color: "#1e293b", margin: 0 }}>
             SuperAdmin Control Panel
           </h1>
-
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            style={styles.exportTriggerBtn}
-          >
-            <Archive size={18} />
-            Export Center
-          </button>
+          <div style={styles.actionGroup}>
+            {user?.admin_level === "super_admin" && (
+              <button
+                onClick={() => navigate("/admin/sessions")}
+                style={styles.sessionBtn}
+              >
+                <CalendarDays size={18} /> Set Academic Session
+              </button>
+            )}
+            <button
+              onClick={() => setIsExportModalOpen(true)}
+              style={styles.exportTriggerBtn}
+            >
+              <Archive size={18} /> Export Center
+            </button>
+          </div>
         </div>
 
         <header style={{ marginBottom: "20px" }}>
           <AdminHeader user={user} onAction={handleAddAction} />
         </header>
 
-        {/* Navigation Tabs */}
         <div style={styles.tabContainer}>
-          <button
+          <Link
+            to="/admin"
             style={{
               ...styles.tab,
-              ...(activeTab === "overview" ? styles.activeTab : {}),
+              ...(activeTabName === "overview" ? styles.activeTab : {}),
             }}
-            onClick={() => setActiveTab("overview")}
           >
             <LayoutDashboard size={18} /> Overview
-          </button>
-
-          <button
+          </Link>
+          <Link
+            to="/admin/students"
             style={{
               ...styles.tab,
-              ...(activeTab === "students" ? styles.activeTab : {}),
+              ...(activeTabName === "students" ? styles.activeTab : {}),
             }}
-            onClick={() => setActiveTab("students")}
           >
             <GraduationCap size={18} /> Students
-          </button>
-
-          <button
+          </Link>
+          <Link
+            to="/admin/communities"
             style={{
               ...styles.tab,
-              ...(activeTab === "communities" ? styles.activeTab : {}),
+              ...(activeTabName === "communities" ? styles.activeTab : {}),
             }}
-            onClick={() => setActiveTab("communities")}
           >
             <Map size={18} /> Communities
-          </button>
-
-          <button
-            style={{
-              ...styles.tab,
-              ...(activeTab === "coordinators" ? styles.activeTab : {}),
-            }}
-            onClick={() => setActiveTab("coordinators")}
-          >
-            <UserCog size={18} /> Coordinators
-          </button>
-
-          {/* NEW ADMIN TAB - Only visible to Super Admins if you want to restrict it */}
+          </Link>
           {user?.admin_level === "super_admin" && (
-            <button
-              style={{
-                ...styles.tab,
-                ...(activeTab === "admins" ? styles.activeTab : {}),
-              }}
-              onClick={() => setActiveTab("admins")}
-            >
-              <Lock size={18} /> System Admins
-            </button>
+            <>
+              <Link
+                to="/admin/sessions"
+                style={{
+                  ...styles.tab,
+                  ...(activeTabName === "sessions" ? styles.activeTab : {}),
+                }}
+              >
+                <CalendarDays size={18} /> Sessions
+              </Link>
+              <Link
+                to="/admin/admins"
+                style={{
+                  ...styles.tab,
+                  ...(activeTabName === "admins" ? styles.activeTab : {}),
+                }}
+              >
+                <Lock size={18} /> System Admins
+              </Link>
+            </>
           )}
         </div>
 
-        {/* Modals */}
+        <Routes>
+          <Route path="/" element={<OverviewContent />} />
+          <Route
+            path="/students"
+            element={
+              <div style={styles.contentCard}>
+                <StudentList />
+              </div>
+            }
+          />
+          <Route
+            path="/communities"
+            element={
+              <div style={styles.contentCard}>
+                <div style={{ marginBottom: "20px" }}>
+                  <h3 style={{ margin: 0 }}>Community Map Registry</h3>
+                  <p style={{ color: "#666", fontSize: "14px" }}>
+                    Manage deployment locations.
+                  </p>
+                </div>
+                <CommunityList />
+              </div>
+            }
+          />
+          {user?.admin_level === "super_admin" && (
+            <>
+              <Route
+                path="/admins"
+                element={
+                  <div style={styles.contentCard}>
+                    <AdminList />
+                  </div>
+                }
+              />
+              <Route path="/sessions" element={<SessionManager />} />
+            </>
+          )}
+        </Routes>
+
         <StudentModal
           isOpen={activeModal === "student"}
-          onClose={closeModal}
-          onRefresh={fetchStats}
-        />
-        <CoordinatorModal
-          isOpen={activeModal === "coordinator"}
           onClose={closeModal}
           onRefresh={fetchStats}
         />
@@ -246,120 +347,11 @@ const AdminDashboard = ({ user, onLogout }) => {
           onClose={closeModal}
           onRefresh={fetchStats}
         />
-
-        {/* Tab Content */}
-        {activeTab === "overview" && (
-          <>
-            <div style={styles.statGrid}>
-              {/* 1. Student Card */}
-              <div style={styles.statCard}>
-                <Users size={24} color="#198104" />
-                <h3>
-                  {loading
-                    ? "..."
-                    : `${stats.registered_students}/${stats.total_students}`}
-                </h3>
-                <p>Registered Students</p>
-                {error && <small style={{ color: "red" }}>{error}</small>}
-              </div>
-
-              {/* 2. Coordinator Card */}
-              <div style={styles.statCard}>
-                <ShieldCheck
-                  size={24}
-                  color="#198104"
-                  style={{ marginBottom: "10px" }}
-                />
-                <h3>{loading ? "..." : stats.active_coordinators || 0}</h3>
-                <p>Coordinators</p>
-              </div>
-
-              {/* 3. Communities Card */}
-              <div style={styles.statCard}>
-                <MapPin
-                  size={24}
-                  color="#198104"
-                  style={{ marginBottom: "10px" }}
-                />
-                <h3>{loading ? "..." : stats.total_communities || 0}</h3>
-                <p>Communities</p>
-              </div>
-            </div>
-
-            <div style={styles.contentCard}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  marginBottom: "15px",
-                }}
-              >
-                <Activity size={20} color="#666" />
-                <h3 style={{ margin: 0 }}>Recent System Activity</h3>
-              </div>
-              {/* SECURITY: Only show content to superadmins */}
-              {user?.admin_level === "super_admin" ? (
-                <RecentActivity />
-              ) : (
-                <div
-                  style={{
-                    padding: "20px",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  <p>Activity logs are restricted to Super Administrators.</p>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {activeTab === "students" && (
-          <div style={styles.contentCard}>
-            <StudentList />
-          </div>
-        )}
-
-        {activeTab === "communities" && (
-          <div style={styles.contentCard}>
-            <div style={{ marginBottom: "20px" }}>
-              <h3 style={{ margin: 0 }}>Community Map Registry</h3>
-              <p style={{ color: "#666", fontSize: "14px" }}>
-                Manage deployment locations and spatial coordinates.
-              </p>
-            </div>
-            <CommunityList />
-          </div>
-        )}
-
-        {activeTab === "coordinators" && (
-          <div style={styles.contentCard}>
-            <CoordinatorList />
-          </div>
-        )}
-
-        {/* NEW ADMIN CONTENT */}
-        {activeTab === "admins" && user?.admin_level === "super_admin" && (
-          <div style={styles.contentCard}>
-            <div style={{ marginBottom: "20px" }}>
-              <h3 style={{ margin: 0 }}>Administrator Registry</h3>
-              <p style={{ color: "#666", fontSize: "14px" }}>
-                Manage system access and permission levels.
-              </p>
-            </div>
-            {/* AdminList component goes here */}
-            <AdminList />
-          </div>
-        )}
-        {/* The Modal Component */}
         <AttendanceExportModal
           isOpen={isExportModalOpen}
           onClose={() => setIsExportModalOpen(false)}
         />
       </main>
-
       <Footer />
     </div>
   );
