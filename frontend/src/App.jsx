@@ -6,7 +6,7 @@ import InputField from "./components/inputField";
 import PrimaryButton from "./components/primaryButton";
 import StudentDashboard from "./components/studentDashboard";
 import AdminDashboard from "./components/AdminDashboard";
-import CoordinatorDashboard from "./components/CoordinatorDashboard";
+import ResetPassword from "./components/ResetPassword";
 import OtpInput from "./components/OtpInput";
 import FullScreenLoader from "./components/FullScreenLoader";
 import { useGeolocation } from "./hooks/useGeolocation";
@@ -17,8 +17,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { location, resetLocation, refreshGPS } = useGeolocation();
-  const [focusedField, setFocusedField] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -29,7 +29,7 @@ function App() {
   });
   const [message, setMessage] = useState({ type: "", text: "" });
 
-  // Session Recovery
+  // --- Session Recovery ---
   useEffect(() => {
     const recoverSession = async () => {
       try {
@@ -46,7 +46,7 @@ function App() {
     recoverSession();
   }, []);
 
-  // Message Timer
+  // --- Message Timer ---
   useEffect(() => {
     if (message.text) {
       const timer = setTimeout(() => {
@@ -74,6 +74,11 @@ function App() {
           const userData = response.data.user;
           setUser(userData);
           localStorage.setItem("uds_user", JSON.stringify(userData));
+
+          // If the admin must reset password, navigate them immediately
+          if (userData.must_reset_password) {
+            navigate("/reset-password");
+          }
         } else {
           setMessage({ type: "success", text: response.data.message });
           setTimeout(() => setView("verify"), 1000);
@@ -98,6 +103,7 @@ function App() {
     setUser(null);
     setView("login");
     resetLocation();
+    navigate("/");
   };
 
   const handleVerifyOtp = async (otpCode) => {
@@ -117,12 +123,18 @@ function App() {
 
   if (isCheckingAuth) return <FullScreenLoader />;
 
-  // --- Protected Route Logic ---
-  // If user is logged in, show their dashboard. If not, show Login.
+  // --- Updated Protected Route Logic ---
   const AuthGuard = ({ children, allowedRole }) => {
     if (!user) return <Navigate to="/" replace />;
+
+    // FORCED RESET TRAP: Block dashboard access if reset is required
+    if (user.must_reset_password) {
+      return <Navigate to="/reset-password" replace />;
+    }
+
     if (allowedRole && user.role !== allowedRole)
       return <Navigate to="/" replace />;
+
     return children;
   };
 
@@ -135,11 +147,11 @@ function App() {
             path="/"
             element={
               user ? (
-                // Redirect to appropriate dashboard if already logged in
-                user.role === "admin" ? (
+                // Logic to redirect already logged-in users
+                user.must_reset_password ? (
+                  <Navigate to="/reset-password" replace />
+                ) : user.role === "admin" ? (
                   <Navigate to="/admin" replace />
-                ) : user.role === "coordinator" ? (
-                  <Navigate to="/coordinator" replace />
                 ) : (
                   <Navigate to="/student" replace />
                 )
@@ -267,21 +279,24 @@ function App() {
             }
           />
 
-          {/* 2. PROTECTED DASHBOARD ROUTES */}
+          {/* 2. PASSWORD RESET ROUTE (Standalone) */}
+          <Route
+            path="/reset-password"
+            element={
+              user && user.must_reset_password ? (
+                <ResetPassword />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          {/* 3. PROTECTED DASHBOARD ROUTES */}
           <Route
             path="/admin/*"
             element={
               <AuthGuard allowedRole="admin">
                 <AdminDashboard user={user} onLogout={handleLogout} />
-              </AuthGuard>
-            }
-          />
-
-          <Route
-            path="/coordinator/*"
-            element={
-              <AuthGuard allowedRole="coordinator">
-                <CoordinatorDashboard user={user} onLogout={handleLogout} />
               </AuthGuard>
             }
           />
@@ -300,7 +315,7 @@ function App() {
             }
           />
 
-          {/* 3. CATCH-ALL REDIRECT */}
+          {/* 4. CATCH-ALL REDIRECT */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ErrorBoundary>

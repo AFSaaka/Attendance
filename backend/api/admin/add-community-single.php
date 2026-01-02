@@ -19,17 +19,17 @@ try {
 
     /**
      * 2. UNIFIED SQL UPSERT
-     * We use ST_SetSRID only if values are present.
-     * We use ON CONFLICT to allow admins to 'correct' existing community data.
+     * Added explicit type casting (::double precision, ::date, ::int) to prevent 
+     * the "Indeterminate datatype" error when values are NULL.
      */
     $sql = "INSERT INTO public.communities 
             (name, region, district, latitude, longitude, location, start_date, duration_weeks)
             VALUES (:name, :region, :district, :lat, :lng, 
                 CASE 
-                    WHEN :lat_val IS NULL OR :lng_val IS NULL THEN NULL 
-                    ELSE ST_SetSRID(ST_MakePoint(:lng_ptr, :lat_ptr), 4326)::geography 
+                    WHEN :lat_val::double precision IS NULL OR :lng_val::double precision IS NULL THEN NULL 
+                    ELSE ST_SetSRID(ST_MakePoint(:lng_ptr::double precision, :lat_ptr::double precision), 4326)::geography 
                 END, 
-                :start_date, :duration)
+                :start_date::date, :duration::int)
             ON CONFLICT (name, region, district) 
             DO UPDATE SET 
                 latitude = EXCLUDED.latitude,
@@ -42,9 +42,11 @@ try {
 
     $stmt = $pdo->prepare($sql);
     
-    // Formatting data
+    // Formatting data to ensure true NULLs or valid numbers
     $lat = (isset($data['latitude']) && is_numeric($data['latitude'])) ? (float)$data['latitude'] : null;
     $lng = (isset($data['longitude']) && is_numeric($data['longitude'])) ? (float)$data['longitude'] : null;
+    $startDate = (!empty($data['start_date'])) ? $data['start_date'] : null;
+    $duration = (isset($data['duration_weeks']) && is_numeric($data['duration_weeks'])) ? (int)$data['duration_weeks'] : 5;
 
     $stmt->execute([
         'name'       => trim($data['name']),
@@ -56,8 +58,8 @@ try {
         'lng_val'    => $lng,
         'lat_ptr'    => $lat,
         'lng_ptr'    => $lng,
-        'start_date' => !empty($data['start_date']) ? $data['start_date'] : null,
-        'duration'   => !empty($data['duration_weeks']) ? (int)$data['duration_weeks'] : 5
+        'start_date' => $startDate,
+        'duration'   => $duration
     ]);
     
     $community_id = $stmt->fetchColumn();
@@ -71,7 +73,8 @@ try {
     $details = json_encode([
         "message" => "Admin created/updated community: " . $data['name'],
         "location" => $data['district'] . ", " . $data['region'],
-        "has_gps" => ($lat !== null)
+        "has_gps" => ($lat !== null),
+        "community_id" => $community_id
     ]);
 
     $logStmt->execute([$admin_id, $_SERVER['REMOTE_ADDR'], $details]);
@@ -82,8 +85,8 @@ try {
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     
-    // Mask detailed DB errors for security
+    // Detailed error logging for you to see in the server logs
     error_log("Add Community Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["error" => "Internal Server Error: Could not save community."]);
+    echo json_encode(["error" => "Database Error: " . $e->getMessage()]);
 }

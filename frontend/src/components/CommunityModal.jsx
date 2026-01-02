@@ -8,6 +8,8 @@ import {
   AlertCircle,
   Loader2,
   MapPin,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import axios from "../api/axios";
 
@@ -16,18 +18,23 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
   const [file, setFile] = useState(null);
+
+  // Updated initial state to include start_date and duration
   const [formData, setFormData] = useState({
     name: "",
     region: "",
     district: "",
     latitude: "",
     longitude: "",
+    start_date: "",
+    duration_weeks: 5, // Defaulting to 5 as per schema
   });
 
   if (!isOpen) return null;
 
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
   };
 
   const resetModal = () => {
@@ -37,6 +44,8 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
       district: "",
       latitude: "",
       longitude: "",
+      start_date: "",
+      duration_weeks: 5,
     });
     setFile(null);
     setStatus(null);
@@ -50,19 +59,23 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
 
     try {
       if (activeTab === "single") {
+        // Pointing to your unified add-community.php endpoint
         await axios.post("/admin/add-community-single", formData);
       } else {
         if (!file) throw new Error("Please select a file first.");
         const data = new FormData();
         data.append("file", file);
+        // Bulk upload handles start_date via the file columns
         await axios.post("/admin/upload-communities", data, {
           headers: { "Content-Type": "multipart/form-data" },
         });
       }
+
       setStatus({
         type: "success",
         message: "Community data saved successfully!",
       });
+
       if (onRefresh) onRefresh();
       setTimeout(resetModal, 2000);
     } catch (err) {
@@ -87,7 +100,7 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
           <div style={{ flex: 1, marginLeft: "12px" }}>
             <h3 style={styles.titleText}>Community Setup</h3>
             <p style={styles.subtitleText}>
-              Add locations for student assignment
+              Add locations and set program timelines
             </p>
           </div>
           <button onClick={resetModal} style={styles.closeBtn}>
@@ -95,7 +108,7 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
           </button>
         </div>
 
-        {/* Pill Tab Switcher */}
+        {/* Tab Switcher */}
         <div style={styles.tabWrapper}>
           <div style={styles.tabContainer}>
             <button
@@ -180,9 +193,34 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
                 </div>
               </div>
 
+              {/* NEW: Timeline Row */}
               <div style={styles.row}>
                 <div style={{ flex: 1 }}>
-                  <label style={styles.label}>Latitude (Optional)</label>
+                  <label style={styles.label}>Start Date</label>
+                  <input
+                    name="start_date"
+                    type="date"
+                    style={styles.input}
+                    value={formData.start_date}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Duration (Weeks)</label>
+                  <input
+                    name="duration_weeks"
+                    type="number"
+                    min="1"
+                    style={styles.input}
+                    value={formData.duration_weeks}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+
+              <div style={styles.row}>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>Latitude</label>
                   <input
                     name="latitude"
                     type="number"
@@ -190,10 +228,11 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
                     style={styles.input}
                     value={formData.latitude}
                     onChange={handleInputChange}
+                    placeholder="Optional"
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={styles.label}>Longitude (Optional)</label>
+                  <label style={styles.label}>Longitude</label>
                   <input
                     name="longitude"
                     type="number"
@@ -201,6 +240,7 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
                     style={styles.input}
                     value={formData.longitude}
                     onChange={handleInputChange}
+                    placeholder="Optional"
                   />
                 </div>
               </div>
@@ -223,6 +263,15 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
                   <>
                     <Upload size={32} color="#94a3b8" />
                     <p style={styles.dropText}>Click to select CSV or Excel</p>
+                    <p
+                      style={{
+                        fontSize: "11px",
+                        color: "#94a3b8",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Format: name, region, district, lat, lng, start_date
+                    </p>
                   </>
                 )}
               </label>

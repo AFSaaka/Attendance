@@ -1,17 +1,8 @@
 <?php
 // backend/api/auth/login.php
 
-/**
- * 1. CENTRALIZED SECURITY & SESSION
- * This single line handles:
- * - session_start() with secure cookie params
- * - Access-Control-Allow-Origin: http://localhost:5173
- * - Access-Control-Allow-Credentials: true
- * - Database $pdo connection
- */
 require_once __DIR__ . '/../common_auth.php';
 
-// Logic begins
 $data = json_decode(file_get_contents('php://input'), true);
 
 if (empty($data['email']) || empty($data['password'])) {
@@ -21,8 +12,10 @@ if (empty($data['email']) || empty($data['password'])) {
 }
 
 try {
+    // UPDATED QUERY: Added must_reset_password
     $stmt = $pdo->prepare("
-        SELECT id, user_name, email, password_hash, role, admin_level, uin, device_fingerprint, is_email_verified 
+        SELECT id, user_name, email, password_hash, role, admin_level, uin, 
+               device_fingerprint, is_email_verified, must_reset_password 
         FROM users 
         WHERE email = ? AND is_active = TRUE
     ");
@@ -31,7 +24,14 @@ try {
 
     if ($user && password_verify($data['password'], $user['password_hash'])) {
 
-        // 2. EMAIL VERIFICATION CHECK
+        // 2. ROLE DEPRECATION CHECK
+        if ($user['role'] === 'coordinator') {
+            http_response_code(403);
+            echo json_encode(["status" => "error", "message" => "Access Denied: The Coordinator portal is no longer active."]);
+            exit;
+        }
+
+        // 3. EMAIL VERIFICATION CHECK (Students only)
         if ($user['role'] === 'student' && $user['is_email_verified'] == false) {
             http_response_code(403);
             echo json_encode([
@@ -43,11 +43,9 @@ try {
             exit;
         }
 
-        // 3. DEVICE LOCK LOGIC
+        // 4. DEVICE LOCK LOGIC (Strictly for Students)
         if ($user['role'] === 'student') {
             $current_fingerprint = md5($_SERVER['HTTP_USER_AGENT']);
-
-            // Check if device is claimed by someone else
             $deviceCheck = $pdo->prepare("SELECT email FROM users WHERE device_fingerprint = ? AND id != ?");
             $deviceCheck->execute([$current_fingerprint, $user['id']]);
             if ($deviceCheck->fetch()) {
@@ -56,7 +54,6 @@ try {
                 exit;
             }
 
-            // Lock device if new, or verify if existing
             if (empty($user['device_fingerprint'])) {
                 $update = $pdo->prepare("UPDATE users SET device_fingerprint = ?, device_locked_at = NOW() WHERE id = ?");
                 $update->execute([$current_fingerprint, $user['id']]);
@@ -67,12 +64,12 @@ try {
             }
         }
 
-        // 4. SECURE SESSION ASSIGNMENT
-        // Protect against session fixation
+        // 5. SECURE SESSION ASSIGNMENT
         session_regenerate_id(true);
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_role'] = $user['role'];
 
+        // UPDATED RESPONSE: Added must_reset_password flag
         echo json_encode([
             "status" => "success",
             "user" => [
@@ -80,7 +77,8 @@ try {
                 "user_name" => $user['user_name'],
                 "role" => $user['role'],
                 "uin" => $user['uin'],
-                "admin_level" => $user['admin_level']
+                "admin_level" => $user['admin_level'],
+                "must_reset_password" => (bool)$user['must_reset_password']
             ]
         ]);
     } else {
@@ -88,7 +86,6 @@ try {
         echo json_encode(["status" => "error", "message" => "Invalid email or password."]);
     }
 } catch (PDOException $e) {
-    // Note: In production, log $e->getMessage() to a file, don't show to user
     http_response_code(500);
     echo json_encode(["status" => "error", "message" => "Internal server error."]);
 }
