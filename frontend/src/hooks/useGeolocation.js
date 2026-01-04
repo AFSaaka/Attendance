@@ -8,11 +8,16 @@ export const useGeolocation = () => {
   });
   const [version, setVersion] = useState(0);
 
-  const refreshGPS = useCallback(() => {
-    // 1. CRITICAL: Clear the state immediately when the button is clicked
-    setLocation({ lat: null, lng: null, error: null });
-    // 2. Trigger the useEffect restart
-    setVersion((v) => v + 1);
+  // UPDATED: Now accepts manual updates from the dashboard
+  const refreshGPS = useCallback((manualData = null) => {
+    if (manualData) {
+      // If the dashboard sends data directly, use it
+      setLocation(manualData);
+    } else {
+      // If the button is clicked, clear and restart
+      setLocation({ lat: null, lng: null, error: null });
+      setVersion((v) => v + 1);
+    }
   }, []);
 
   const resetLocation = useCallback(() => {
@@ -25,12 +30,10 @@ export const useGeolocation = () => {
       return;
     }
 
-    // This helps debug what the browser is actually saying
     const handleError = (err) => {
       let errorMessage = "Location Access Denied";
       if (err.code === 3) errorMessage = "GPS Timeout - Are you indoors?";
       if (err.code === 2) errorMessage = "Position Unavailable";
-
       setLocation({ lat: null, lng: null, error: errorMessage });
     };
 
@@ -42,7 +45,7 @@ export const useGeolocation = () => {
           error: null,
         });
       },
-      handleError, // Use the improved error handler
+      handleError,
       {
         enableHighAccuracy: true,
         timeout: 30000,

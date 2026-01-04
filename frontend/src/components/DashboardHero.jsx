@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import AttendanceButton from "./AttendanceButton";
-import { Layers } from "lucide-react";
+import { Layers, Wifi, WifiOff } from "lucide-react";
 
 const DashboardHero = ({
   fullName,
@@ -10,13 +10,25 @@ const DashboardHero = ({
   location,
   onAttendance,
   isSubmitting,
+  status,
 }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
   }, []);
 
   const heroStyle = {
@@ -31,12 +43,11 @@ const DashboardHero = ({
     display: "flex",
     flexDirection: isMobile ? "column" : "row",
     justifyContent: "space-between",
-    // CENTER items on mobile, align center vertically on desktop
     alignItems: "center",
-    // CENTER text on mobile
     textAlign: isMobile ? "center" : "left",
     gap: "20px",
     position: "relative",
+    overflow: "hidden",
   };
 
   const badgeStyle = {
@@ -52,29 +63,76 @@ const DashboardHero = ({
     border: "1px solid rgba(255,255,255,0.1)",
   };
 
+  const statusBadgeStyle = {
+    backgroundColor: isOnline
+      ? "rgba(34, 197, 94, 0.25)"
+      : "rgba(239, 68, 68, 0.3)",
+    color: isOnline ? "#4ade80" : "#fca5a5",
+    padding: "6px 14px",
+    borderRadius: "20px",
+    fontSize: "11px",
+    fontWeight: "800",
+    letterSpacing: "0.5px",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    border: isOnline
+      ? "1px solid rgba(34, 197, 94, 0.4)"
+      : "1px solid rgba(239, 68, 68, 0.4)",
+    marginBottom: "10px",
+    textTransform: "uppercase",
+  };
+
   return (
     <section style={heroStyle}>
+      {/* Decorative Background Element */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-20%",
+          right: "-10%",
+          width: "300px",
+          height: "300px",
+          background: "rgba(255,255,255,0.05)",
+          borderRadius: "50%",
+          zIndex: 1,
+        }}
+      />
+
       <div
         style={{
           zIndex: 2,
-          maxWidth: isMobile ? "100%" : "60%",
+          maxWidth: isMobile ? "100%" : "65%",
           display: "flex",
           flexDirection: "column",
-          // Ensures the inner items (like the badge) also center on mobile
           alignItems: isMobile ? "center" : "flex-start",
         }}
       >
+        {/* Connection Status Badge */}
+        <div style={statusBadgeStyle}>
+          {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+          {isOnline ? "System Online" : "Offline Mode Active"}
+        </div>
+
         <h1
           style={{
-            fontSize: "2.2rem",
+            fontSize: isMobile ? "1.8rem" : "2.4rem",
             fontWeight: "800",
-            marginBottom: "8px",
-            margin: 0,
+            lineHeight: "1.2",
+            margin: "5px 0 10px 0",
           }}
         >
           Welcome, {fullName}!
         </h1>
-        <p style={{ fontSize: "1.1rem", opacity: 0.9, margin: "8px 0" }}>
+
+        <p
+          style={{
+            fontSize: "1.1rem",
+            opacity: 0.9,
+            margin: "0 0 15px 0",
+            maxWidth: "500px",
+          }}
+        >
           Ready for your{" "}
           <span
             style={{ fontWeight: "bold", borderBottom: "3px solid #fbbf24" }}
@@ -91,11 +149,11 @@ const DashboardHero = ({
           <span style={{ fontWeight: "bold" }}>{role?.toUpperCase()}</span>
         </div>
 
-        {/* Mobile View: Button appears here centered */}
+        {/* Mobile View: Attendance Button */}
         {isMobile && (
           <div
             style={{
-              marginTop: "0",
+              marginTop: "25px",
               width: "100%",
               display: "flex",
               justifyContent: "center",
@@ -110,13 +168,14 @@ const DashboardHero = ({
         )}
       </div>
 
-      {/* Desktop View: Button stays on the right */}
+      {/* Desktop View: Attendance Button */}
       {!isMobile && (
-        <div style={{ zIndex: 2, marginRight: "80px", marginBottom: "40px" }}>
+        <div style={{ zIndex: 2, marginRight: "40px" }}>
           <AttendanceButton
             location={location}
             onClick={onAttendance}
             disabled={isSubmitting}
+            status={status}
           />
         </div>
       )}

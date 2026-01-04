@@ -35,42 +35,86 @@ const StudentDashboard = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasSignedToday, setHasSignedToday] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] = useState({
+    message: "",
+    type: "",
+  });
 
   // --- Consolidated Status Check ---
   const checkStatus = useCallback(async () => {
-    if (!user?.id) return;
+    // 1. Changed from .id to .uin
+    if (!user?.uin) return;
+
     try {
+      // 2. Using uin for the API call as well
       const response = await axios.get(
-        `student/check_daily_status.php?user_id=${user.id}`
+        `student/check_daily_status?user_id=${user.uin}`
       );
-      setHasSignedToday(response.data.signed);
+      const isSigned = response.data.signed;
+      setHasSignedToday(isSigned);
+
+      const today = new Date().toISOString().split("T")[0];
+      // 3. Changed key name to use .uin
+      localStorage.setItem(
+        `signed_${user.uin}_${today}`,
+        JSON.stringify(isSigned)
+      );
     } catch (err) {
+      if (!navigator.onLine) {
+        const today = new Date().toISOString().split("T")[0];
+        // 4. Changed key name to use .uin for offline retrieval
+        const cachedStatus = localStorage.getItem(
+          `signed_${user.uin}_${today}`
+        );
+        if (cachedStatus !== null) {
+          setHasSignedToday(JSON.parse(cachedStatus));
+        }
+      }
       console.error("Status check failed", err);
     }
   }, [user]);
   // Add this effect inside your StudentDashboard component
   useEffect(() => {
     const runSync = async () => {
-      console.log("Checking for offline records to sync...");
-      const result = await syncOfflineAttendance();
+      // 1. Only show "Syncing" if we actually have something to sync
+      // (Optional: you could check localStorage.getItem("pending_attendance") first)
 
-      if (result.success && result.count > 0) {
-        console.log(`Successfully synced ${result.count} records.`);
-        // Refresh the UI status since we just uploaded new data
-        checkStatus();
+      console.log("Checking for offline records to sync...");
+
+      try {
+        const result = await syncOfflineAttendance();
+
+        if (result.success && result.count > 0) {
+          // 2. Show success message to the user
+          setAttendanceStatus({
+            message: `Synced ${result.count} offline records!`,
+            type: "success",
+          });
+
+          // Refresh the UI status
+          checkStatus();
+
+          // 3. Clear the success message after 4 seconds
+          setTimeout(() => {
+            setAttendanceStatus({ message: "", type: "" });
+          }, 4000);
+        }
+      } catch (error) {
+        setAttendanceStatus({
+          message: "Background sync failed. Will retry later.",
+          type: "error",
+        });
       }
     };
 
-    // Scenario 1: Run when the dashboard first loads
     runSync();
-
-    // Scenario 2: Run whenever the browser goes from 'offline' to 'online'
     window.addEventListener("online", runSync);
 
     return () => {
       window.removeEventListener("online", runSync);
     };
   }, [checkStatus]);
+
   useEffect(() => {
     if (user) {
       checkStatus();
@@ -81,10 +125,20 @@ const StudentDashboard = ({
   const getPlacementData = async () => {
     try {
       const response = await axios.get("student/get_placement");
-      if (response.data.status === "success")
-        setPlacement(response.data.placement);
+      if (response.data.status === "success") {
+        const data = response.data.placement;
+        setPlacement(data);
+        // CACHE for offline use - Changed user.id to user.uin
+        localStorage.setItem(`placement_${user.uin}`, JSON.stringify(data));
+      }
     } catch (err) {
-      if (err.response?.status === 401) onLogout();
+      if (err.response?.status === 401) {
+        onLogout();
+      } else if (!navigator.onLine) {
+        // LOAD from cache if offline - Changed user.id to user.uin
+        const cached = localStorage.getItem(`placement_${user.uin}`);
+        if (cached) setPlacement(JSON.parse(cached));
+      }
     } finally {
       setLoadingPlacement(false);
     }
@@ -97,11 +151,28 @@ const StudentDashboard = ({
   };
 
   const handleAttendance = () => {
-    if (hasSignedToday) return alert("Already recorded for today!");
-    if (!isInRange)
-      return alert(
-        `Too far away (${Math.round(distance)}m). Move within 200m.`
-      );
+    // 1. Handle "Already Signed" - Use 'info' style
+    if (hasSignedToday) {
+      setAttendanceStatus({
+        message: "Attendance already recorded for today.",
+        type: "info",
+      });
+      return;
+    }
+
+    // 2. Handle "Out of Range" - Use 'error' style
+    if (placement?.coordinate_check !== false && !isInRange) {
+      setAttendanceStatus({
+        message: `Too far away (${Math.round(distance)}m). Move within 200m.`,
+        type: "error",
+      });
+      return;
+    }
+
+    // 3. Clear any existing messages if validation passes
+    setAttendanceStatus({ message: "", type: "" });
+
+    // 4. Open the confirmation modal
     setIsModalOpen(true);
   };
 
@@ -115,12 +186,15 @@ const StudentDashboard = ({
       longitude: location.lng,
       user_id: user?.id || user?.user_id,
       enrollment_id: placement?.id,
+      community_id: placement?.community_id,
+      session_id: placement?.session_id,
       status: "present",
       week_number: progress.week,
       day_number: progress.day,
       captured_at: new Date().toISOString(),
     };
 
+    // Inside confirmAttendanceSubmission
     try {
       const response = await axios.post(
         "student/submit_attendance",
@@ -129,19 +203,32 @@ const StudentDashboard = ({
 
       if (response.data.status === "success") {
         setHasSignedToday(true);
-        return true; // Tells AttendanceModal to show Success UI
+        setAttendanceStatus({
+          message: "Attendance verified successfully!",
+          type: "success",
+        }); // NEW
+        return true;
       } else {
-        alert(`Denied: ${response.data.message}`);
+        // REPLACED alert with status UI
+        setAttendanceStatus({ message: response.data.message, type: "error" });
         return false;
       }
     } catch (err) {
       if (!err.response) {
-        // Device is OFFLINE
         saveAttendanceOffline(attendanceData);
         setHasSignedToday(true);
-        return true; // Still return true so Modal shows "Saved Offline" success
+        // NEW: Notify the user it's stored locally
+        setAttendanceStatus({
+          message: "Offline: Saved to device storage.",
+          type: "info",
+        });
+        return true;
       }
-      alert(err.response?.data?.message || "Submission failed");
+      // REPLACED alert with status UI
+      setAttendanceStatus({
+        message: err.response?.data?.message || "Submission failed",
+        type: "error",
+      });
       return false;
     } finally {
       setIsSubmitting(false);
@@ -159,7 +246,10 @@ const StudentDashboard = ({
         )
       : null;
 
-  const isInRange = checkIsInRange(distance, 200);
+  const isInRange =
+    placement?.coordinate_check === false || placement?.coordinate_check === 0
+      ? true
+      : checkIsInRange(distance, 200);
   const fullName = placement?.full_name || user?.name || "Student";
 
   return (
@@ -175,6 +265,7 @@ const StudentDashboard = ({
           location={location}
           onAttendance={handleAttendance}
           isSubmitting={isSubmitting}
+          status={attendanceStatus}
           isInRange={isInRange}
           distance={distance}
           buttonText={
@@ -254,41 +345,104 @@ const StudentDashboard = ({
           </div>
 
           {/* Card 3: Live Tracker */}
+
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h3 style={styles.cardTitle}>
                 <Navigation size={24} color="#0c0481" /> Live Tracker
               </h3>
-              <button onClick={handleRefreshClick} style={styles.refreshBtn}>
-                <RefreshCw
-                  size={16}
-                  className={isRefreshing ? "spin-animation" : ""}
-                />
-              </button>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "10px" }}
+              >
+                {/* Live status indicator for instant tracking feel */}
+                {!location.error && location.lat && (
+                  <div style={styles.gpsBadge}>
+                    <span className="pulse-dot"></span> LIVE
+                  </div>
+                )}
+                <button onClick={handleRefreshClick} style={styles.refreshBtn}>
+                  <RefreshCw
+                    size={16}
+                    className={isRefreshing ? "spin-animation" : ""}
+                  />
+                </button>
+              </div>
             </div>
+
             <div style={styles.contentGrid}>
+              {placement?.coordinate_check === false && (
+                <div
+                  style={{
+                    ...styles.statusBox,
+                    backgroundColor: "#eff6ff",
+                    color: "#1d4ed8",
+                    border: "1px solid #bfdbfe",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <Info size={16} />
+                  <span>GPS verification is optional for this community.</span>
+                </div>
+              )}
+
               {location.error ? (
                 <div style={styles.errorBox}>{location.error}</div>
               ) : (
                 <>
-                  <p style={styles.sectionLabel}>Your Location:</p>
+                  {/* Current Student Location */}
+                  <p style={styles.sectionLabel}>Your Current Location:</p>
                   <div style={styles.coordBox}>
                     <div>
-                      <small>LAT</small>
+                      <small style={styles.miniLabel}>LAT</small>
                       <br />
-                      <strong>{location.lat?.toFixed(6) || "0.0"}</strong>
+                      <strong>{location.lat?.toFixed(6) || "0.000000"}</strong>
                     </div>
                     <div style={styles.coordDivider}>
-                      <small>LNG</small>
+                      <small style={styles.miniLabel}>LNG</small>
                       <br />
-                      <strong>{location.lng?.toFixed(6) || "0.0"}</strong>
+                      <strong>{location.lng?.toFixed(6) || "0.000000"}</strong>
                     </div>
                   </div>
+
+                  {/* Community Target Location (NEW SECTION) */}
+                  <p style={{ ...styles.sectionLabel, marginTop: "15px" }}>
+                    Community Target:
+                  </p>
+                  <div
+                    style={{
+                      ...styles.coordBox,
+                      backgroundColor: "#f1f5f9",
+                      borderStyle: "dashed",
+                    }}
+                  >
+                    <div>
+                      <small style={styles.miniLabel}>TARGET LAT</small>
+                      <br />
+                      <code style={{ color: "#475569" }}>
+                        {parseFloat(placement?.community_lat || 0).toFixed(6)}
+                      </code>
+                    </div>
+                    <div style={styles.coordDivider}>
+                      <small style={styles.miniLabel}>TARGET LNG</small>
+                      <br />
+                      <code style={{ color: "#475569" }}>
+                        {parseFloat(placement?.community_lng || 0).toFixed(6)}
+                      </code>
+                    </div>
+                  </div>
+
+                  {/* Distance Badge */}
                   <div
                     style={{
                       ...styles.distanceBadge,
-                      backgroundColor: isInRange ? "#f0fdf4" : "#fef2f2",
-                      color: isInRange ? "#166534" : "#991b1b",
+                      backgroundColor:
+                        placement?.coordinate_check === false || isInRange
+                          ? "#f0fdf4"
+                          : "#fef2f2",
+                      color:
+                        placement?.coordinate_check === false || isInRange
+                          ? "#166534"
+                          : "#991b1b",
                     }}
                   >
                     <MapPin size={16} />
@@ -296,6 +450,7 @@ const StudentDashboard = ({
                       {distance !== null
                         ? `${Math.round(distance)}m from target`
                         : "Locating..."}
+                      {placement?.coordinate_check === false && " (Verified)"}
                     </span>
                   </div>
                 </>
@@ -408,6 +563,13 @@ const styles = {
     fontSize: "13px",
     fontWeight: "bold",
   },
+  miniLabel: {
+    fontSize: "9px",
+    color: "#64748b",
+    fontWeight: "bold",
+    letterSpacing: "0.5px",
+  },
+  // Ensure coordBox has a transition for a smooth feel
   coordBox: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
@@ -416,6 +578,7 @@ const styles = {
     borderRadius: "12px",
     border: "1px solid #e2e8f0",
     gap: "10px",
+    transition: "all 0.3s ease",
   },
   gpsBadge: {
     display: "flex",

@@ -2,7 +2,7 @@
 // backend/public/index.php
 
 // 1. MUST match your React URL
-$allowed_origin = "http://localhost:5173";
+$allowed_origin = "http://localhost:4173";
 
 header("Access-Control-Allow-Origin: $allowed_origin");
 header("Access-Control-Allow-Credentials: true");

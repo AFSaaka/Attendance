@@ -1,3 +1,5 @@
+import { registerSW } from "virtual:pwa-register";
+registerSW({ immediate: true });
 import React, { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import axios from "./api/axios";
@@ -19,6 +21,19 @@ function App() {
   const { location, resetLocation, refreshGPS } = useGeolocation();
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -35,7 +50,16 @@ function App() {
       try {
         const savedUser = localStorage.getItem("uds_user");
         if (savedUser) {
-          setUser(JSON.parse(savedUser));
+          const parsedUser = JSON.parse(savedUser);
+
+          // If student, allow immediate entry (Offline Login)
+          if (parsedUser.role === "student") {
+            setUser(parsedUser);
+          } else {
+            // If Admin, you might want to verify with server if online
+            // For now, we'll trust the local session to keep it simple
+            setUser(parsedUser);
+          }
         }
       } catch (error) {
         console.error("Session recovery failed");
@@ -75,31 +99,54 @@ function App() {
           setUser(userData);
           localStorage.setItem("uds_user", JSON.stringify(userData));
 
-          // If the admin must reset password, navigate them immediately
           if (userData.must_reset_password) {
             navigate("/reset-password");
           }
         } else {
+          // Registration Success
           setMessage({ type: "success", text: response.data.message });
           setTimeout(() => setView("verify"), 1000);
         }
       }
     } catch (error) {
+      // --- 1. OFFLINE LOGIN BYPASS ---
+      if (!navigator.onLine && view === "login") {
+        const savedUser = JSON.parse(localStorage.getItem("uds_user"));
+        if (savedUser && savedUser.email === formData.email) {
+          setUser(savedUser);
+          setMessage({ type: "success", text: "Offline login successful." });
+          return; // Stop here, we are logged in!
+        } else {
+          setMessage({
+            type: "error",
+            text: "No offline session found for this email.",
+          });
+          return;
+        }
+      }
+
+      // --- 2. ONLINE ERROR HANDLING ---
       const data = error.response?.data;
+
+      // Handle the specific "Account not verified" error from your previous version
       if (error.response?.status === 403 && data?.requires_verification) {
         setMessage({ type: "error", text: data.message });
         setFormData((prev) => ({ ...prev, email: data.email || prev.email }));
         setTimeout(() => setView("verify"), 2000);
         return;
       }
-      setMessage({ type: "error", text: data?.message || "Action failed." });
+
+      setMessage({
+        type: "error",
+        text: data?.message || "Action failed. Check connection.",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("uds_user");
+    // localStorage.removeItem("uds_user");
     setUser(null);
     setView("login");
     resetLocation();
@@ -140,6 +187,23 @@ function App() {
 
   return (
     <div style={styles.wrapperStyle}>
+      {isOffline && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            width: "100%",
+            backgroundColor: "#ff4d4f",
+            color: "white",
+            textAlign: "center",
+            fontSize: "12px",
+            padding: "5px 0",
+            zIndex: 1000,
+          }}
+        >
+          You are currently offline. Using saved session.
+        </div>
+      )}
       <ErrorBoundary>
         <Routes>
           {/* 1. PUBLIC AUTH ROUTE */}
@@ -329,7 +393,7 @@ const styles = {
     justifyContent: "center",
     alignItems: "center",
     width: "100vw",
-    minHeight: "100vh",
+    minHeight: "100dvh",
     backgroundColor: "#f0f2f5",
   },
   cardStyle: {

@@ -1,41 +1,34 @@
 <?php
+// api/student/sync_attendance.php
 header("Content-Type: application/json");
 require_once __DIR__ . '/../common_auth.php';
-requireLogin();
-require_once __DIR__ . '/../../config/db.php';
+requireStudent();
 
 $data = json_decode(file_get_contents("php://input"), true);
 $records = $data['records'] ?? [];
-$user_id = $_SESSION['user_id'] ?? null;
+$user_id = $currentUser['id'];
 
-if (!$user_id || empty($records)) {
-    echo json_encode(["status" => "error", "message" => "Invalid sync data or session expired."]);
+if (empty($records)) {
+    echo json_encode(["status" => "error", "message" => "No records to sync."]);
     exit;
 }
 
-$results = [
-    "synced" => 0,
-    "skipped" => 0,
-    "failed" => 0,
-    "errors" => []
-];
+$results = ["synced" => 0, "failed" => 0, "errors" => []];
 
 try {
-    // 1. Added 'synced' column to the INSERT list
-    // 2. Added 'ON CONFLICT' update to ensure it's marked as synced even if previously skipped
+    // 1. Notice we added community_id and session_id to the INSERT
     $sql = "INSERT INTO public.attendance_records (
-                user_id, enrollment_id, attendance_date, 
-                status, latitude, longitude, 
-                week_number, day_number, location_geom,
-                synced 
+                user_id, enrollment_id, community_id, session_id,
+                attendance_date, status, latitude, longitude, 
+                week_number, day_number, location_geom, synced 
             ) VALUES (
-                :uid, :eid, :captured_date, 
-                :status, :lat::numeric, :lng::numeric, 
+                :uid, :eid, :cid, :sid,
+                :captured_date, :status, :lat::numeric, :lng::numeric, 
                 :week, :day, 
                 ST_SetSRID(ST_MakePoint(:lng_geom::double precision, :lat_geom::double precision), 4326),
                 TRUE
             ) 
-            ON CONFLICT (user_id, enrollment_id, attendance_date) 
+            ON CONFLICT ON CONSTRAINT unique_user_enrollment_date 
             DO UPDATE SET 
                 status = EXCLUDED.status,
                 latitude = EXCLUDED.latitude,
@@ -51,36 +44,30 @@ try {
             $capturedDate = date('Y-m-d', strtotime($record['captured_at']));
 
             $stmt->execute([
-                'uid' => $user_id,
-                'eid' => $record['enrollment_id'],
+                'uid'  => $user_id,
+                'eid'  => $record['enrollment_id'],
+                'cid'  => $record['community_id'] ?? null, // From frontend
+                'sid'  => $record['session_id'] ?? null,   // From frontend
                 'captured_date' => $capturedDate,
                 'status' => $record['status'] ?? 'present',
-                'lat' => $record['latitude'],
-                'lng' => $record['longitude'],
-                'week' => $record['week_number'],
-                'day' => $record['day_number'],
+                'lat'    => $record['latitude'],
+                'lng'    => $record['longitude'],
+                'week'   => $record['week_number'],
+                'day'    => $record['day_number'],
                 'lng_geom' => $record['longitude'],
                 'lat_geom' => $record['latitude']
             ]);
 
-            // With DO UPDATE, rowCount() returns 1 for new insert, 2 for update
-            if ($stmt->rowCount() > 0) {
-                $results['synced']++;
-            } else {
-                $results['skipped']++;
-            }
+            $results['synced']++;
         } catch (Exception $e) {
             $results['failed']++;
-            $results['errors'][] = $e->getMessage();
+            $results['errors'][] = "Date {$record['captured_at']}: " . $e->getMessage();
         }
     }
 
-    echo json_encode([
-        "status" => "success",
-        "message" => "Sync complete. {$results['synced']} updated/added, {$results['skipped']} skipped.",
-        "details" => $results
-    ]);
+    echo json_encode(["status" => "success", "details" => $results]);
 
 } catch (PDOException $e) {
-    echo json_encode(["status" => "error", "message" => "Database Sync Error: " . $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode(["status" => "error", "message" => "Database Sync Failure"]);
 }

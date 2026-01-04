@@ -10,9 +10,9 @@ requireLogin();
 // 3. The logic is now strictly focused on data retrieval
 try {
     // We use the ID directly from the secure session provided by common_auth.php
-    $stmt = $pdo->prepare("
+   $stmt = $pdo->prepare("
     SELECT 
-        se.id,             -- THIS IS THE MISSING KEY
+        se.id,
         sr.full_name, 
         sr.uin, 
         sr.index_number,
@@ -24,6 +24,7 @@ try {
         asess.description as academic_year,
         c.latitude as community_lat,
         c.longitude as community_lng,
+        c.coordinate_check, -- ADD THIS LINE
         c.start_date,
         c.duration_weeks
     FROM students s
