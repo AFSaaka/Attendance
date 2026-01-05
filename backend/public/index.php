@@ -6,7 +6,8 @@ $allowed_origins = [
     "http://localhost:5173", // Standard Vite dev port
     "http://localhost:4173", // Standard Vite preview port
     "https://attendance-git-dev-af-saakas-projects.vercel.app", 
-    "https://attendance-production-71f3.up.railway.app"
+    "https://attendance-production-71f3.up.railway.app",
+    "https://attendance-af-saakas-projects.vercel.app"
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
