@@ -1,5 +1,10 @@
 <?php
 // backend/public/index.php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Add this to see what's happening in Railway Logs
+error_log("Request received: " . $_SERVER['REQUEST_METHOD'] . " for " . ($_GET['url'] ?? 'root'));
 
 // 1. Array of allowed URLs
 $allowed_origins = [
