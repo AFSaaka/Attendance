@@ -5,7 +5,7 @@
 $allowed_origins = [
     "http://localhost:5173", // Standard Vite dev port
     "http://localhost:4173", // Standard Vite preview port
-    "https://attendance-git-dev-af-saakas-projects.vercel.app/" // Replace with your ACTUAL Vercel URL
+    "https://attendance-git-dev-af-saakas-projects.vercel.app" // Replace with your ACTUAL Vercel URL
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
