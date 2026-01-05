@@ -1,10 +1,19 @@
 <?php
 // backend/public/index.php
 
-// 1. MUST match your React URL
-$allowed_origin = "http://localhost:4173";
+// 1. Array of allowed URLs (Localhost and your live Vercel link)
+$allowed_origins = [
+    "http://localhost:5173", // Standard Vite dev port
+    "http://localhost:4173", // Standard Vite preview port
+    "https://attendance-git-dev-af-saakas-projects.vercel.app/" // Replace with your ACTUAL Vercel URL
+];
 
-header("Access-Control-Allow-Origin: $allowed_origin");
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: $origin");
+}
+
 header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
