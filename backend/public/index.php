@@ -1,39 +1,42 @@
 <?php
 // backend/public/index.php
 
-// 1. Array of allowed URLs (Localhost and your live Vercel link)
+// 1. Array of allowed URLs
 $allowed_origins = [
-    "http://localhost:5173", // Standard Vite dev port
-    "http://localhost:4173", // Standard Vite preview port
-    "https://attendance-git-dev-af-saakas-projects.vercel.app", 
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "https://attendance-git-dev-af-saakas-projects.vercel.app",
     "https://attendance-production-71f3.up.railway.app",
     "https://attendance-af-saakas-projects.vercel.app"
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
+// 2. ALWAYS set these headers first for compatibility
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE, PUT");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Origin, Accept");
+
+// 3. Match the origin and set the header
 if (in_array($origin, $allowed_origins)) {
     header("Access-Control-Allow-Origin: $origin");
 }
 
-header("Access-Control-Allow-Credentials: true");
-header("Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json");
-
+// 4. Handle Preflight OPTIONS request immediately
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
+header("Content-Type: application/json");
 
-// 2. Extract the URL
+// 5. Extract the URL (Handle the Railway routing properly)
 $url = isset($_GET['url']) ? rtrim($_GET['url'], '/') : '';
 
-// 3. Updated Routing Table (MUST INCLUDE ALL ENDPOINTS)
+// 6. Routing Table
 $routes = [
-    'auth/register' => '../api/auth/register.php',
     'auth/login' => '../api/auth/login.php',
+    'auth/register' => '../api/auth/register.php',
     'auth/verify_otp' => '../api/auth/verify_otp.php',
     'auth/reset-password' => '../api/auth/reset-password.php',
     'auth/resend_otp' => '../api/auth/resend_otp.php',
@@ -61,21 +64,23 @@ $routes = [
     'admin/student-actions' => '../api/admin/student-actions.php',
     'admin/bulk-upload-coordinators' => '../api/admin/bulk-upload-coordinators.php',
     'admin/get-sessions' => '../api/admin/get-sessions.php',
-    'student/get_placement' => '../api/student/get_placement.php', // ADD THIS!
+    'student/get_placement' => '../api/student/get_placement.php',
     'student/submit_attendance' => '../api/student/submit_attendance.php',
     'student/check_daily_status' => '../api/student/check_daily_status.php',
     'student/sync_attendance' => '../api/student/sync_attendance.php',
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
-    // 'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
-    // 'coordinator/get_attendance' => '../api/coordinator/get_attendance.php',
-    // 'coordinator/get-communities' => '../api/coordinator/get-communities.php',
-    // 'coordinator/set-community-start-date' => '../api/coordinator/set-community-start-date.php',
 ];
 
 if (array_key_exists($url, $routes)) {
-    // Before requiring, make sure common_auth.php isn't duplicating CORS headers
-    require_once $routes[$url];
+    // SECURITY CHECK: Ensure the file exists before requiring it
+    $filePath = realpath(__DIR__ . DIRECTORY_SEPARATOR . $routes[$url]);
+    if ($filePath && file_exists($filePath)) {
+        require_once $filePath;
+    } else {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => "API file missing: " . $url]);
+    }
 } else {
     http_response_code(404);
     echo json_encode(["status" => "error", "message" => "Endpoint not found: " . $url]);
