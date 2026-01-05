@@ -1,12 +1,8 @@
 <?php
 // backend/public/index.php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
-// Add this to see what's happening in Railway Logs
-error_log("Request received: " . $_SERVER['REQUEST_METHOD'] . " for " . ($_GET['url'] ?? 'root'));
-
-// 1. Array of allowed URLs
+// 1. Force headers to be sent immediately
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $allowed_origins = [
     "http://localhost:5173",
     "http://localhost:4173",
@@ -15,23 +11,24 @@ $allowed_origins = [
     "https://attendance-af-saakas-projects.vercel.app"
 ];
 
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-
-// 2. ALWAYS set these headers first for compatibility
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: $origin");
+}
 header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE, PUT");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Origin, Accept");
 
-// 3. Match the origin and set the header
-if (in_array($origin, $allowed_origins)) {
-    header("Access-Control-Allow-Origin: $origin");
-}
-
-// 4. Handle Preflight OPTIONS request immediately
+// 2. Handle Preflight and EXIT so no other code runs
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
+
+// 3. Now enable error reporting for debugging the rest of the script
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+// ... rest of your routing and require_once logic ...
 
 header("Content-Type: application/json");
 
