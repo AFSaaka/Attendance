@@ -6,7 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import Navbar from "./navBar";
+import Navbar from "./navbar";
 import Footer from "./footer";
 import AdminHeader from "./AdminHeader";
 import axios from "../api/axios";

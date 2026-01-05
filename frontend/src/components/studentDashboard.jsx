@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import Navbar from "./navBar";
+import Navbar from "./navbar";
 import Footer from "./footer";
 import axios from "../api/axios";
 import DashboardHero from "./DashboardHero";
