@@ -1,7 +1,8 @@
 {
-    "require": {
-        "phpmailer/phpmailer": "^7.0",
-        "shuchkin/simplexlsx": "^1.1",
-        "tecnickcom/tcpdf": "^6.10"
-    }
+  "require": {
+    "phpmailer/phpmailer": "^7.0",
+    "shuchkin/simplexlsx": "^1.1",
+    "tecnickcom/tcpdf": "^6.10",
+    "ext-pdo_pgsql": "*"
+  }
 }
