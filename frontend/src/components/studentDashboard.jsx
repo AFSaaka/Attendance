@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import Navbar from "./navBar";
+import Navbar from "./navbar";
 import Footer from "./footer";
 import axios from "../api/axios";
 import DashboardHero from "./DashboardHero";
@@ -39,7 +39,9 @@ const StudentDashboard = ({
     message: "",
     type: "",
   });
-
+  useEffect(() => {
+    document.title = "TTFPP | Student Dashboard";
+  }, []);
   // --- Consolidated Status Check ---
   const checkStatus = useCallback(async () => {
     // 1. Changed from .id to .uin
@@ -391,18 +393,56 @@ const StudentDashboard = ({
                 <>
                   {/* Current Student Location */}
                   <p style={styles.sectionLabel}>Your Current Location:</p>
-                  <div style={styles.coordBox}>
+                  <div
+                    style={{
+                      ...styles.coordBox,
+                      border: location.lat
+                        ? "1px solid #94fc86ff"
+                        : "1px solid #ffd700", // Yellow border while searching
+                    }}
+                  >
                     <div>
                       <small style={styles.miniLabel}>LAT</small>
                       <br />
-                      <strong>{location.lat?.toFixed(6) || "0.000000"}</strong>
+                      <strong
+                        style={{ color: location.lat ? "#1e293b" : "#94a3b8" }}
+                      >
+                        {location.lat
+                          ? location.lat.toFixed(6)
+                          : "Searching..."}
+                      </strong>
                     </div>
                     <div style={styles.coordDivider}>
                       <small style={styles.miniLabel}>LNG</small>
                       <br />
-                      <strong>{location.lng?.toFixed(6) || "0.000000"}</strong>
+                      <strong
+                        style={{ color: location.lng ? "#1e293b" : "#94a3b8" }}
+                      >
+                        {location.lng
+                          ? location.lng.toFixed(6)
+                          : "Searching..."}
+                      </strong>
                     </div>
                   </div>
+
+                  {/* NEW: Accuracy Indicator */}
+                  {location.accuracy && (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        marginTop: "5px",
+                        color: location.accuracy > 100 ? "#991b1b" : "#166534",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                      }}
+                    >
+                      <Info size={12} />
+                      Signal Accuracy: ±{Math.round(location.accuracy)}m
+                      {location.accuracy > 100 &&
+                        " (Weak signal - try moving outdoors)"}
+                    </div>
+                  )}
 
                   {/* Community Target Location (NEW SECTION) */}
                   <p style={{ ...styles.sectionLabel, marginTop: "15px" }}>

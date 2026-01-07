@@ -66,8 +66,8 @@ const DashboardHero = ({
   const statusBadgeStyle = {
     backgroundColor: isOnline
       ? "rgba(34, 197, 94, 0.25)"
-      : "rgba(239, 68, 68, 0.3)",
-    color: isOnline ? "#4ade80" : "#fca5a5",
+      : "rgba(248, 245, 55, 0.3)",
+    color: isOnline ? "#fcfcfcff" : "#f7fa51ff",
     padding: "6px 14px",
     borderRadius: "20px",
     fontSize: "11px",
@@ -78,7 +78,7 @@ const DashboardHero = ({
     gap: "6px",
     border: isOnline
       ? "1px solid rgba(34, 197, 94, 0.4)"
-      : "1px solid rgba(239, 68, 68, 0.4)",
+      : "1px solid rgba(239, 208, 68, 0.4)",
     marginBottom: "10px",
     textTransform: "uppercase",
   };
@@ -87,13 +87,26 @@ const DashboardHero = ({
     <section style={heroStyle}>
       {/* Decorative Background Element */}
       <div
+        className="top"
         style={{
           position: "absolute",
           top: "-20%",
           right: "-10%",
           width: "300px",
           height: "300px",
-          background: "rgba(255,255,255,0.05)",
+          background: "rgba(255, 255, 255, 0.12)",
+          borderRadius: "50%",
+          zIndex: 1,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: "-10%",
+          left: "-10%",
+          width: "200px",
+          height: "200px",
+          background: "rgba(162, 165, 6, 0.2)",
           borderRadius: "50%",
           zIndex: 1,
         }}

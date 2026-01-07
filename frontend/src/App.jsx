@@ -16,12 +16,15 @@ import ErrorBoundary from "./components/ErrorBoundary";
 
 function App() {
   const [view, setView] = useState("login");
+  const { location, resetLocation, refreshGPS } = useGeolocation();
   const [user, setUser] = useState(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const { location, resetLocation, refreshGPS } = useGeolocation();
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    document.title = "TTFPP | Login";
+  }, []);
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);

@@ -6,7 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import Navbar from "./navBar";
+import Navbar from "./navbar";
 import Footer from "./footer";
 import AdminHeader from "./AdminHeader";
 import axios from "../api/axios";
@@ -44,6 +44,10 @@ const AdminDashboard = ({ user, onLogout }) => {
     total_students: 0,
     total_communities: 0,
   });
+
+  useEffect(() => {
+    document.title = "TTFPP | Admin Dashboard";
+  }, []);
 
   const [activeModal, setActiveModal] = useState(null);
 
@@ -217,7 +221,8 @@ const AdminDashboard = ({ user, onLogout }) => {
       <main style={styles.main}>
         <div style={styles.topBar}>
           <h1 style={{ fontSize: "24px", color: "#1e293b", margin: 0 }}>
-            SuperAdmin Control Panel
+            {user?.admin_level === "super_admin" ? "Super Admin" : "Admin"}{" "}
+            Control Panel
           </h1>
           <div style={styles.actionGroup}>
             {user?.admin_level === "super_admin" && (

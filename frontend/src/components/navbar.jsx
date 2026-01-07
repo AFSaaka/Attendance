@@ -1,7 +1,8 @@
-import React from "react";
+import { useState } from "react";
 import udsLogo from "../assets/udslogo.ico";
 
 const Navbar = ({ onLogout, userEmail }) => {
+  const [isHovered, setIsHovered] = useState(false);
   const navStyle = {
     backgroundColor: "#fff",
     padding: "10px 5%",
@@ -21,7 +22,7 @@ const Navbar = ({ onLogout, userEmail }) => {
         <span
           style={{ fontWeight: "700", color: "#198104", fontSize: "1.1rem" }}
         >
-          TTFPP Portal
+          TTFPP Attendance Portal
         </span>
       </div>
 
@@ -40,15 +41,18 @@ const Navbar = ({ onLogout, userEmail }) => {
         )}
         <button
           onClick={onLogout}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
           style={{
-            background: "#fff1f0",
+            background: isHovered ? "#cf1322" : "#fff1f0", // Turns red on hover
             border: "1px solid #ffa39e",
-            color: "#cf1322",
+            color: isHovered ? "#ffffff" : "#cf1322", // Turns text white on hover for contrast
             padding: "5px 15px",
             borderRadius: "6px",
             cursor: "pointer",
             fontSize: "13px",
             fontWeight: "600",
+            transition: "all 0.3s ease", // Smooth color transition
           }}
         >
           Logout
