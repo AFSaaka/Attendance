@@ -163,7 +163,12 @@ const StudentDashboard = ({
     }
 
     // 2. Handle "Out of Range" - Use 'error' style
-    if (placement?.coordinate_check !== false && !isInRange) {
+    if (
+      placement?.coordinate_check !== false &&
+      distance !== null &&
+      !isInRange &&
+      location.accuracy <= 100
+    ) {
       setAttendanceStatus({
         message: `Too far away (${Math.round(distance)}m). Move within 200m.`,
         type: "error",
@@ -273,7 +278,9 @@ const StudentDashboard = ({
           buttonText={
             hasSignedToday ? "Attendance Completed" : "Take Attendance Now"
           }
-          buttonDisabled={hasSignedToday || !isInRange || isSubmitting}
+          buttonDisabled={
+            hasSignedToday || !location.lat || !location.lng || isSubmitting
+          }
         />
 
         <AttendanceModal
