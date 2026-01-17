@@ -36,6 +36,7 @@ $routes = [
     'admin/edit_community' => '../api/admin/edit_community.php',
     'admin/manage-admins' => '../api/admin/manage-admins.php',
     'admin/get-academic-sessions' => '../api/admin/get-academic-sessions.php',
+    'admin/get-location-filters' => '../api/admin/get-location-filters.php',
     'admin/manage_session' => '../api/admin/manage_session.php',
     'admin/get-system-activity' => '../api/admin/get-system-activity.php',
     'admin/generate-log-file' => '../api/admin/generate-log-file.php',

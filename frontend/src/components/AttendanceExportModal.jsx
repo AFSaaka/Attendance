@@ -1,26 +1,31 @@
 import React, { useState, useEffect } from "react";
 import axios from "../api/axios";
-import { Download, X, FileText, Archive, AlertCircle } from "lucide-react";
+import { Download, X, Archive, AlertCircle, MapPin } from "lucide-react";
 
 const AttendanceExportModal = ({ isOpen, onClose }) => {
   const [sessions, setSessions] = useState([]);
+  const [availableRegions, setAvailableRegions] = useState([]);
+  const [availableDistricts, setAvailableDistricts] = useState([]);
+  const [availableCommunities, setAvailableCommunities] = useState([]);
+
   const [filters, setFilters] = useState({
     session_id: "",
     region: "",
     district: "",
     community_id: "",
   });
+
+  const [isLoadingFilters, setIsLoadingFilters] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Load available sessions on mount
+  // 1. Initial Load: Sessions
   useEffect(() => {
     const fetchSessions = async () => {
       try {
         const res = await axios.get("/admin/get-sessions");
         setSessions(res.data);
-        // Default to the current session if available
         const current = res.data.find((s) => s.is_current);
-        if (current) setFilters((f) => ({ ...f, session_id: current.id }));
+        if (current) handleFilterChange("session_id", current.id);
       } catch (err) {
         console.error("Failed to load sessions");
       }
@@ -28,19 +33,58 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
     if (isOpen) fetchSessions();
   }, [isOpen]);
 
+  // 2. Cascade Logic: When session or geography changes
+  const handleFilterChange = async (name, value) => {
+    const newFilters = { ...filters, [name]: value };
+
+    // Reset children when a parent changes
+    if (name === "session_id") {
+      newFilters.region = "";
+      newFilters.district = "";
+      newFilters.community_id = "";
+      fetchOptions("regions", { session_id: value });
+    } else if (name === "region") {
+      newFilters.district = "";
+      newFilters.community_id = "";
+      fetchOptions("districts", {
+        session_id: filters.session_id,
+        region: value,
+      });
+    } else if (name === "district") {
+      newFilters.community_id = "";
+      fetchOptions("communities", {
+        session_id: filters.session_id,
+        region: filters.region,
+        district: value,
+      });
+    }
+
+    setFilters(newFilters);
+  };
+
+  const fetchOptions = async (type, params) => {
+    if (!params.session_id) return;
+    setIsLoadingFilters(true);
+    try {
+      const res = await axios.get(`/admin/get-location-filters?type=${type}`, {
+        params,
+      });
+      if (type === "regions") setAvailableRegions(res.data);
+      if (type === "districts") setAvailableDistricts(res.data);
+      if (type === "communities") setAvailableCommunities(res.data);
+    } catch (err) {
+      console.error(`Failed to load ${type}`);
+    } finally {
+      setIsLoadingFilters(false);
+    }
+  };
+
   const handleDownload = () => {
     if (!filters.session_id) return alert("Please select an Academic Session");
-
     setIsExporting(true);
-
-    // Construct Query String
     const params = new URLSearchParams(filters).toString();
     const downloadUrl = `${axios.defaults.baseURL}/admin/export-attendance?${params}`;
-
-    // Use window.location to trigger the PHP attachment download
     window.location.href = downloadUrl;
-
-    // Give it a moment before enabling the button again
     setTimeout(() => setIsExporting(false), 3000);
   };
 
@@ -51,7 +95,7 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
       <div style={styles.modal}>
         <div style={styles.header}>
           <h2 style={styles.title}>
-            <Archive size={20} /> Attendance Export Center
+            <Archive size={20} /> Export Center
           </h2>
           <button onClick={onClose} style={styles.closeBtn}>
             <X size={20} />
@@ -60,18 +104,17 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
 
         <div style={styles.body}>
           <p style={styles.info}>
-            Select the scope of the export. Large requests (e.g., entire
-            Regions) may take a few moments to package into a ZIP file.
+            Select the specific area for export. Leaving fields empty will
+            export all data for that level.
           </p>
 
+          {/* Session Select */}
           <div style={styles.formGroup}>
             <label style={styles.label}>Academic Session *</label>
             <select
               style={styles.select}
               value={filters.session_id}
-              onChange={(e) =>
-                setFilters({ ...filters, session_id: e.target.value })
-              }
+              onChange={(e) => handleFilterChange("session_id", e.target.value)}
             >
               <option value="">Select Session</option>
               {sessions.map((s) => (
@@ -82,33 +125,69 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
             </select>
           </div>
 
+          {/* Region & District Grid */}
           <div style={styles.grid}>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Region (Optional)</label>
-              <input
-                style={styles.input}
-                placeholder="e.g. Northern"
-                onChange={(e) =>
-                  setFilters({ ...filters, region: e.target.value })
-                }
-              />
+              <label style={styles.label}>Region</label>
+              <select
+                style={styles.select}
+                value={filters.region}
+                disabled={!filters.session_id}
+                onChange={(e) => handleFilterChange("region", e.target.value)}
+              >
+                <option value="">All Regions</option>
+                {availableRegions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
             </div>
             <div style={styles.formGroup}>
-              <label style={styles.label}>District (Optional)</label>
-              <input
-                style={styles.input}
-                placeholder="e.g. Savelugu"
-                onChange={(e) =>
-                  setFilters({ ...filters, district: e.target.value })
-                }
-              />
+              <label style={styles.label}>District</label>
+              <select
+                style={styles.select}
+                value={filters.district}
+                disabled={!filters.region}
+                onChange={(e) => handleFilterChange("district", e.target.value)}
+              >
+                <option value="">All Districts</option>
+                {availableDistricts.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
+          {/* Community Select */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Specific Community</label>
+            <select
+              style={styles.select}
+              value={filters.community_id}
+              disabled={!filters.district}
+              onChange={(e) =>
+                handleFilterChange("community_id", e.target.value)
+              }
+            >
+              <option value="">All Communities in District</option>
+              {availableCommunities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div style={styles.warningBox}>
-            <AlertCircle size={16} color="#854d0e" />
+            <AlertCircle size={16} />
             <span>
-              Files will be organized as: <b>Region - District - Community</b>
+              Structured as:{" "}
+              <b>
+                Region / District / {filters.community_id ? "Community" : "All"}
+              </b>
             </span>
           </div>
         </div>
@@ -124,7 +203,7 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
               isExporting ? styles.downloadBtnDisabled : styles.downloadBtn
             }
           >
-            {isExporting ? "Generating ZIP..." : "Download Attendance Package"}
+            {isExporting ? "Packaging..." : "Generate ZIP Package"}
             <Download size={18} />
           </button>
         </div>

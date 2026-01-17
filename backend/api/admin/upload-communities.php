@@ -17,6 +17,15 @@ try {
         throw new Exception("No file provided for upload.");
     }
 
+    // 1. GET CURRENT SESSION ID (Get this once before the loop)
+    $sessStmt = $pdo->query("SELECT id FROM public.academic_sessions WHERE is_current = true LIMIT 1");
+    $currentSession = $sessStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$currentSession) {
+        throw new Exception("No active academic session found. Please set a session to 'current' before uploading.");
+    }
+    $sessionId = $currentSession['id'];
+
     $fileTmpPath = $_FILES['file']['tmp_name'];
     $fileName = $_FILES['file']['name'];
     $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
@@ -44,13 +53,10 @@ try {
 
     $pdo->beginTransaction();
 
-    /**
-     * SQL LOGIC WITH EXPLICIT CASTING
-     * Added ::double precision, ::date, and ::int to prevent 'Indeterminate datatype' errors.
-     */
+    // 2. UPDATED SQL (Added session_id and is_deleted reset)
     $stmt = $pdo->prepare("
         INSERT INTO public.communities 
-        (name, region, district, latitude, longitude, location, start_date, duration_weeks)
+        (name, region, district, latitude, longitude, location, start_date, duration_weeks, session_id)
         VALUES (
             :name, :region, :district, :lat, :lng, 
             CASE 
@@ -58,7 +64,8 @@ try {
                 ELSE ST_SetSRID(ST_MakePoint(:lng_ptr::double precision, :lat_ptr::double precision), 4326)::geography 
             END,
             :start_date::date,
-            :duration::int
+            :duration::int,
+            :session_id
         )
         ON CONFLICT (name, region, district) 
         DO UPDATE SET 
@@ -67,6 +74,8 @@ try {
             location = EXCLUDED.location,
             start_date = EXCLUDED.start_date,
             duration_weeks = EXCLUDED.duration_weeks,
+            session_id = EXCLUDED.session_id,
+            is_deleted = false, 
             updated_at = NOW()
     ");
 
@@ -74,18 +83,15 @@ try {
     foreach ($rows as $index => $data) {
         if (empty($data[0])) continue; 
 
-        // Mapping file columns to variables
         $lat = (isset($data[3]) && is_numeric($data[3])) ? (float)$data[3] : null;
         $lng = (isset($data[4]) && is_numeric($data[4])) ? (float)$data[4] : null;
-        
-        // Handle new schema fields from file
         $startDate = (!empty($data[5])) ? trim($data[5]) : null;
         $duration  = (isset($data[6]) && is_numeric($data[6])) ? (int)$data[6] : 5;
 
         $stmt->execute([
-            'name'       => trim($data[0]),
-            'region'     => trim($data[1]),
-            'district'   => trim($data[2]),
+            'name'       => trim((string)$data[0]),
+            'region'     => trim((string)$data[1]),
+            'district'   => trim((string)$data[2]),
             'lat'        => $lat,
             'lng'        => $lng,
             'lat_val'    => $lat,
@@ -93,7 +99,8 @@ try {
             'lat_ptr'    => $lat,
             'lng_ptr'    => $lng,
             'start_date' => $startDate,
-            'duration'   => $duration
+            'duration'   => $duration,
+            'session_id' => $sessionId // Link to current session
         ]);
         $count++;
     }
@@ -105,8 +112,9 @@ try {
     ");
     
     $details = json_encode([
-        "message" => "Processed $count communities via file upload",
-        "filename" => $fileName
+        "message" => "Processed $count communities for session $sessionId",
+        "filename" => $fileName,
+        "session_id" => $sessionId
     ]);
 
     $logStmt->execute([$currentUser['id'], $_SERVER['REMOTE_ADDR'], $details]);
