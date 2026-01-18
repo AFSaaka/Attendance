@@ -39,6 +39,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [stats, setStats] = useState({
     registered_students: 0,
     total_students: 0,
@@ -63,8 +64,10 @@ const AdminDashboard = ({ user, onLogout }) => {
   const handleAddAction = (actionType) => setActiveModal(actionType);
   const closeModal = () => setActiveModal(null);
 
-  const fetchStats = async () => {
-    setLoading(true);
+  const fetchStats = async (isInitial = false) => {
+    if (isInitial) setLoading(true);
+    else setIsRefreshing(true);
+
     setError(null);
     try {
       const res = await axios.get("/admin/stats");
@@ -74,11 +77,12 @@ const AdminDashboard = ({ user, onLogout }) => {
       setError("Failed to load metrics.");
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchStats();
+    fetchStats(true);
   }, []);
 
   const styles = {

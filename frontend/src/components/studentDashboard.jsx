@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Navbar from "./navbar";
 import Footer from "./footer";
 import axios from "../api/axios";
@@ -6,7 +6,7 @@ import DashboardHero from "./DashboardHero";
 import AttendanceModal from "./AttendanceModal";
 import {
   saveAttendanceOffline,
-  syncOfflineAttendance, // <--- Add this specifically
+  syncOfflineAttendance,
   calculateProgramProgress,
 } from "../utils/attendanceUtils";
 import { calculateDistance, checkIsInRange } from "../utils/gpsUtils";
@@ -26,126 +26,136 @@ import {
 const StudentDashboard = ({
   user,
   onLogout,
-  location = { lat: null, lng: null, error: null },
+  location = { lat: null, lng: null, error: null, accuracy: null },
   onRefreshGPS,
 }) => {
+  // 1. STATE
   const [placement, setPlacement] = useState(null);
   const [loadingPlacement, setLoadingPlacement] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasSignedToday, setHasSignedToday] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [attendanceStatus, setAttendanceStatus] = useState({
     message: "",
     type: "",
   });
-  useEffect(() => {
-    document.title = "TTFPP | Student Dashboard";
-  }, []);
-  // --- Consolidated Status Check ---
-  const checkStatus = useCallback(async () => {
-    // 1. Changed from .id to .uin
-    if (!user?.uin) return;
 
+  // 2. CALCULATIONS (Must be defined before functions that use them)
+  const distance = useMemo(() => {
+    if (location.lat && location.lng && placement?.community_lat) {
+      return calculateDistance(
+        location.lat,
+        location.lng,
+        parseFloat(placement.community_lat),
+        parseFloat(placement.community_lng)
+      );
+    }
+    return null;
+  }, [
+    location.lat,
+    location.lng,
+    placement?.community_lat,
+    placement?.community_lng,
+  ]);
+
+  const isInRange = useMemo(() => {
+    if (
+      placement?.coordinate_check === false ||
+      placement?.coordinate_check === 0
+    )
+      return true;
+    return checkIsInRange(distance, 200);
+  }, [distance, placement?.coordinate_check]);
+
+  // 3. API DATA FETCHING
+  const checkStatus = useCallback(async () => {
+    if (!user?.uin) return;
     try {
-      // 2. Using uin for the API call as well
       const response = await axios.get(
         `student/check_daily_status?user_id=${user.uin}`
       );
-      const isSigned = response.data.signed;
-      setHasSignedToday(isSigned);
-
-      const today = new Date().toISOString().split("T")[0];
-      // 3. Changed key name to use .uin
+      setHasSignedToday(response.data.signed);
       localStorage.setItem(
-        `signed_${user.uin}_${today}`,
-        JSON.stringify(isSigned)
+        `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
+        JSON.stringify(response.data.signed)
       );
     } catch (err) {
       if (!navigator.onLine) {
-        const today = new Date().toISOString().split("T")[0];
-        // 4. Changed key name to use .uin for offline retrieval
-        const cachedStatus = localStorage.getItem(
-          `signed_${user.uin}_${today}`
+        const cached = localStorage.getItem(
+          `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`
         );
-        if (cachedStatus !== null) {
-          setHasSignedToday(JSON.parse(cachedStatus));
-        }
+        if (cached !== null) setHasSignedToday(JSON.parse(cached));
       }
-      console.error("Status check failed", err);
     }
-  }, [user]);
-  // Add this effect inside your StudentDashboard component
-  useEffect(() => {
-    const runSync = async () => {
-      // 1. Only show "Syncing" if we actually have something to sync
-      // (Optional: you could check localStorage.getItem("pending_attendance") first)
+  }, [user?.uin]);
 
-      console.log("Checking for offline records to sync...");
-
-      try {
-        const result = await syncOfflineAttendance();
-
-        if (result.success && result.count > 0) {
-          // 2. Show success message to the user
-          setAttendanceStatus({
-            message: `Synced ${result.count} offline records!`,
-            type: "success",
-          });
-
-          // Refresh the UI status
-          checkStatus();
-
-          // 3. Clear the success message after 4 seconds
-          setTimeout(() => {
-            setAttendanceStatus({ message: "", type: "" });
-          }, 4000);
-        }
-      } catch (error) {
-        setAttendanceStatus({
-          message: "Background sync failed. Will retry later.",
-          type: "error",
-        });
-      }
-    };
-
-    runSync();
-    window.addEventListener("online", runSync);
-
-    return () => {
-      window.removeEventListener("online", runSync);
-    };
-  }, [checkStatus]);
-
-  useEffect(() => {
-    if (user) {
-      checkStatus();
-      getPlacementData();
-    }
-  }, [user, checkStatus]);
-
-  const getPlacementData = async () => {
+  const getPlacementData = useCallback(async () => {
+    if (!user?.uin) return;
     try {
       const response = await axios.get("student/get_placement");
       if (response.data.status === "success") {
-        const data = response.data.placement;
-        setPlacement(data);
-        // CACHE for offline use - Changed user.id to user.uin
-        localStorage.setItem(`placement_${user.uin}`, JSON.stringify(data));
+        setPlacement(response.data.placement);
+        localStorage.setItem(
+          `placement_${user.uin}`,
+          JSON.stringify(response.data.placement)
+        );
       }
     } catch (err) {
-      if (err.response?.status === 401) {
-        onLogout();
-      } else if (!navigator.onLine) {
-        // LOAD from cache if offline - Changed user.id to user.uin
+      if (err.response?.status === 401) onLogout();
+      else if (!navigator.onLine) {
         const cached = localStorage.getItem(`placement_${user.uin}`);
         if (cached) setPlacement(JSON.parse(cached));
       }
     } finally {
       setLoadingPlacement(false);
     }
-  };
+  }, [user?.uin, onLogout]);
 
+  // 4. EFFECTS
+  useEffect(() => {
+    document.title = "TTFPP | Student Dashboard";
+    if (user?.uin) {
+      checkStatus();
+      getPlacementData();
+    }
+  }, [user?.uin, checkStatus, getPlacementData]);
+
+  // Offline Sync Effect
+  useEffect(() => {
+    const runSync = async () => {
+      if (isSyncing || !navigator.onLine) return;
+      const pending = localStorage.getItem("pending_attendance");
+      if (!pending) return;
+
+      setIsSyncing(true);
+      try {
+        const result = await syncOfflineAttendance();
+        if (result.success && result.count > 0) {
+          setAttendanceStatus({
+            message: `Synced ${result.count} records!`,
+            type: "success",
+          });
+          checkStatus();
+          setTimeout(
+            () => setAttendanceStatus({ message: "", type: "" }),
+            4000
+          );
+        }
+      } catch (e) {
+        console.error("Sync failed", e);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    window.addEventListener("online", runSync);
+    runSync();
+    return () => window.removeEventListener("online", runSync);
+  }, [isSyncing, checkStatus]);
+
+  // 5. EVENT HANDLERS
   const handleRefreshClick = () => {
     setIsRefreshing(true);
     onRefreshGPS();
@@ -153,16 +163,13 @@ const StudentDashboard = ({
   };
 
   const handleAttendance = () => {
-    // 1. Handle "Already Signed" - Use 'info' style
     if (hasSignedToday) {
       setAttendanceStatus({
-        message: "Attendance already recorded for today.",
+        message: "Attendance already recorded.",
         type: "info",
       });
       return;
     }
-
-    // 2. Handle "Out of Range" - Use 'error' style
     if (
       placement?.coordinate_check !== false &&
       distance !== null &&
@@ -170,25 +177,19 @@ const StudentDashboard = ({
       location.accuracy <= 100
     ) {
       setAttendanceStatus({
-        message: `Too far away (${Math.round(distance)}m). Move within 200m.`,
+        message: `Too far away (${Math.round(distance)}m).`,
         type: "error",
       });
       return;
     }
-
-    // 3. Clear any existing messages if validation passes
     setAttendanceStatus({ message: "", type: "" });
-
-    // 4. Open the confirmation modal
     setIsModalOpen(true);
   };
 
-  // --- Optimized Submission Logic ---
   const confirmAttendanceSubmission = async () => {
     setIsSubmitting(true);
     const progress = calculateProgramProgress(placement?.start_date);
-
-    const attendanceData = {
+    const data = {
       latitude: location.lat,
       longitude: location.lng,
       user_id: user?.id || user?.user_id,
@@ -201,72 +202,47 @@ const StudentDashboard = ({
       captured_at: new Date().toISOString(),
     };
 
-    // Inside confirmAttendanceSubmission
     try {
-      const response = await axios.post(
-        "student/submit_attendance",
-        attendanceData
-      );
-
-      if (response.data.status === "success") {
+      const resp = await axios.post("student/submit_attendance", data);
+      if (resp.data.status === "success") {
         setHasSignedToday(true);
         setAttendanceStatus({
-          message: "Attendance verified successfully!",
+          message: "Verified successfully!",
           type: "success",
-        }); // NEW
-        return true;
-      } else {
-        // REPLACED alert with status UI
-        setAttendanceStatus({ message: response.data.message, type: "error" });
-        return false;
-      }
-    } catch (err) {
-      if (!err.response) {
-        saveAttendanceOffline(attendanceData);
-        setHasSignedToday(true);
-        // NEW: Notify the user it's stored locally
-        setAttendanceStatus({
-          message: "Offline: Saved to device storage.",
-          type: "info",
         });
         return true;
       }
-      // REPLACED alert with status UI
-      setAttendanceStatus({
-        message: err.response?.data?.message || "Submission failed",
-        type: "error",
-      });
+      setAttendanceStatus({ message: resp.data.message, type: "error" });
+      return false;
+    } catch (err) {
+      if (!err.response) {
+        saveAttendanceOffline(data);
+        setHasSignedToday(true);
+        setAttendanceStatus({ message: "Saved offline.", type: "info" });
+        return true;
+      }
+      setAttendanceStatus({ message: "Submission failed", type: "error" });
       return false;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // --- Calculations ---
-  const distance =
-    location.lat && location.lng && placement?.community_lat
-      ? calculateDistance(
-          location.lat,
-          location.lng,
-          parseFloat(placement.community_lat),
-          parseFloat(placement.community_lng)
-        )
-      : null;
-
-  const isInRange =
-    placement?.coordinate_check === false || placement?.coordinate_check === 0
-      ? true
-      : checkIsInRange(distance, 200);
   const fullName = placement?.full_name || user?.name || "Student";
 
   return (
     <div style={styles.container}>
       <Navbar onLogout={onLogout} userEmail={user?.email} />
-
+      {isSyncing && (
+        <div style={styles.syncOverlay}>
+          <RefreshCw size={14} className="spin-animation" /> Syncing offline
+          data...
+        </div>
+      )}
       <main style={styles.main}>
         <DashboardHero
           fullName={loadingPlacement ? "..." : fullName}
-          academicLevel={placement?.level || "N/A"}
+          academicLevel={loadingPlacement ? "..." : placement?.level || "N/A"}
           uin={user?.uin}
           role={user?.role}
           location={location}
@@ -286,13 +262,13 @@ const StudentDashboard = ({
         <AttendanceModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          onSubmit={confirmAttendanceSubmission} // Returns true/false
+          onSubmit={confirmAttendanceSubmission}
           placement={placement}
           isSubmitting={isSubmitting}
         />
 
         <div style={styles.grid}>
-          {/* Card 1: Profile */}
+          {/* Profile Card */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h3 style={styles.cardTitle}>
@@ -323,7 +299,7 @@ const StudentDashboard = ({
             </div>
           </div>
 
-          {/* Card 2: Placement */}
+          {/* Placement Card */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h3 style={styles.cardTitle}>
@@ -353,8 +329,7 @@ const StudentDashboard = ({
             </div>
           </div>
 
-          {/* Card 3: Live Tracker */}
-
+          {/* Live Tracker Card */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
               <h3 style={styles.cardTitle}>
@@ -363,7 +338,6 @@ const StudentDashboard = ({
               <div
                 style={{ display: "flex", alignItems: "center", gap: "10px" }}
               >
-                {/* Live status indicator for instant tracking feel */}
                 {!location.error && location.lat && (
                   <div style={styles.gpsBadge}>
                     <span className="pulse-dot"></span> LIVE
@@ -377,81 +351,35 @@ const StudentDashboard = ({
                 </button>
               </div>
             </div>
-
             <div style={styles.contentGrid}>
-              {placement?.coordinate_check === false && (
-                <div
-                  style={{
-                    ...styles.statusBox,
-                    backgroundColor: "#eff6ff",
-                    color: "#1d4ed8",
-                    border: "1px solid #bfdbfe",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <Info size={16} />
-                  <span>GPS verification is optional for this community.</span>
-                </div>
-              )}
-
               {location.error ? (
                 <div style={styles.errorBox}>{location.error}</div>
               ) : (
                 <>
-                  {/* Current Student Location */}
-                  <p style={styles.sectionLabel}>Your Current Location:</p>
+                  <p style={styles.sectionLabel}>Your Location:</p>
                   <div
                     style={{
                       ...styles.coordBox,
                       border: location.lat
-                        ? "1px solid #94fc86ff"
-                        : "1px solid #ffd700", // Yellow border while searching
+                        ? "1px solid #94fc86"
+                        : "1px solid #ffd700",
                     }}
                   >
                     <div>
                       <small style={styles.miniLabel}>LAT</small>
                       <br />
-                      <strong
-                        style={{ color: location.lat ? "#1e293b" : "#94a3b8" }}
-                      >
-                        {location.lat
-                          ? location.lat.toFixed(6)
-                          : "Searching..."}
+                      <strong>
+                        {location.lat?.toFixed(6) || "Searching..."}
                       </strong>
                     </div>
                     <div style={styles.coordDivider}>
                       <small style={styles.miniLabel}>LNG</small>
                       <br />
-                      <strong
-                        style={{ color: location.lng ? "#1e293b" : "#94a3b8" }}
-                      >
-                        {location.lng
-                          ? location.lng.toFixed(6)
-                          : "Searching..."}
+                      <strong>
+                        {location.lng?.toFixed(6) || "Searching..."}
                       </strong>
                     </div>
                   </div>
-
-                  {/* NEW: Accuracy Indicator */}
-                  {location.accuracy && (
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        marginTop: "5px",
-                        color: location.accuracy > 100 ? "#991b1b" : "#166534",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "5px",
-                      }}
-                    >
-                      <Info size={12} />
-                      Signal Accuracy: ±{Math.round(location.accuracy)}m
-                      {location.accuracy > 100 &&
-                        " (Weak signal - try moving outdoors)"}
-                    </div>
-                  )}
-
-                  {/* Community Target Location (NEW SECTION) */}
                   <p style={{ ...styles.sectionLabel, marginTop: "15px" }}>
                     Community Target:
                   </p>
@@ -465,31 +393,23 @@ const StudentDashboard = ({
                     <div>
                       <small style={styles.miniLabel}>TARGET LAT</small>
                       <br />
-                      <code style={{ color: "#475569" }}>
+                      <code>
                         {parseFloat(placement?.community_lat || 0).toFixed(6)}
                       </code>
                     </div>
                     <div style={styles.coordDivider}>
                       <small style={styles.miniLabel}>TARGET LNG</small>
                       <br />
-                      <code style={{ color: "#475569" }}>
+                      <code>
                         {parseFloat(placement?.community_lng || 0).toFixed(6)}
                       </code>
                     </div>
                   </div>
-
-                  {/* Distance Badge */}
                   <div
                     style={{
                       ...styles.distanceBadge,
-                      backgroundColor:
-                        placement?.coordinate_check === false || isInRange
-                          ? "#f0fdf4"
-                          : "#fef2f2",
-                      color:
-                        placement?.coordinate_check === false || isInRange
-                          ? "#166534"
-                          : "#991b1b",
+                      backgroundColor: isInRange ? "#f0fdf4" : "#fef2f2",
+                      color: isInRange ? "#166534" : "#991b1b",
                     }}
                   >
                     <MapPin size={16} />
@@ -497,7 +417,6 @@ const StudentDashboard = ({
                       {distance !== null
                         ? `${Math.round(distance)}m from target`
                         : "Locating..."}
-                      {placement?.coordinate_check === false && " (Verified)"}
                     </span>
                   </div>
                 </>
@@ -510,6 +429,8 @@ const StudentDashboard = ({
     </div>
   );
 };
+
+// ... keep your DetailRow and styles exactly as they were
 
 const DetailRow = ({ icon, label, value }) => (
   <div style={styles.detailRow}>
@@ -538,6 +459,22 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    transition: "opacity 0.3s ease-in-out", // Smooth entry
+  },
+  syncOverlay: {
+    position: "fixed",
+    top: "70px",
+    right: "20px",
+    backgroundColor: "#1e293b",
+    color: "white",
+    padding: "8px 16px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    zIndex: 1000,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
   },
   grid: {
     display: "grid",
@@ -625,6 +562,7 @@ const styles = {
     borderRadius: "12px",
     border: "1px solid #e2e8f0",
     gap: "10px",
+    minHeight: "55px",
     transition: "all 0.3s ease",
   },
   gpsBadge: {
