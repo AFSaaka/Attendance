@@ -56,7 +56,7 @@ try {
         ]);
         $distResult = $distStmt->fetch();
 
-        if ($distResult['meters'] > 200) {
+        if ($distResult['meters'] > 500) {
             echo json_encode([
                 "status" => "error",
                 "message" => "Too far away (" . round($distResult['meters']) . "m). Verification required."
@@ -75,7 +75,7 @@ try {
                 CURRENT_DATE, :ins_status, :ins_lat::numeric, :ins_lng::numeric, 
                 :ins_week, :ins_day, 
                 ST_SetSRID(ST_MakePoint(:ins_lng_geom::double precision, :ins_lat_geom::double precision), 4326),
-                TRUE
+                FALSE
             )";
 
     $stmt = $pdo->prepare($sql);

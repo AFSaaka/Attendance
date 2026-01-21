@@ -49,7 +49,7 @@ const StudentDashboard = ({
         location.lat,
         location.lng,
         parseFloat(placement.community_lat),
-        parseFloat(placement.community_lng)
+        parseFloat(placement.community_lng),
       );
     }
     return null;
@@ -66,7 +66,7 @@ const StudentDashboard = ({
       placement?.coordinate_check === 0
     )
       return true;
-    return checkIsInRange(distance, 200);
+    return checkIsInRange(distance, 500);
   }, [distance, placement?.coordinate_check]);
 
   // 3. API DATA FETCHING
@@ -74,17 +74,17 @@ const StudentDashboard = ({
     if (!user?.uin) return;
     try {
       const response = await axios.get(
-        `student/check_daily_status?user_id=${user.uin}`
+        `student/check_daily_status?user_id=${user.uin}`,
       );
       setHasSignedToday(response.data.signed);
       localStorage.setItem(
         `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
-        JSON.stringify(response.data.signed)
+        JSON.stringify(response.data.signed),
       );
     } catch (err) {
       if (!navigator.onLine) {
         const cached = localStorage.getItem(
-          `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`
+          `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
         );
         if (cached !== null) setHasSignedToday(JSON.parse(cached));
       }
@@ -99,7 +99,7 @@ const StudentDashboard = ({
         setPlacement(response.data.placement);
         localStorage.setItem(
           `placement_${user.uin}`,
-          JSON.stringify(response.data.placement)
+          JSON.stringify(response.data.placement),
         );
       }
     } catch (err) {
@@ -140,7 +140,7 @@ const StudentDashboard = ({
           checkStatus();
           setTimeout(
             () => setAttendanceStatus({ message: "", type: "" }),
-            4000
+            4000,
           );
         }
       } catch (e) {
