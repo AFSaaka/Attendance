@@ -1,15 +1,20 @@
-# Use an official PHP image with Apache
 FROM php:8.2-apache
 
-# Install PostgreSQL client libraries
+# Install Postgres extensions
 RUN apt-get update && apt-get install -y libpq-dev \
     && docker-php-ext-install pdo pdo_pgsql
 
-# Copy your PHP files to the web server directory
+# Enable Apache Mod_Rewrite for routing
+RUN a2enmod rewrite
+
+# Copy everything from backend/ into the container
 COPY . /var/www/html/
 
-# Use the default production configuration
-RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+# Point Apache to the 'public' folder
+ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 
-# Set permissions for Apache
-RUN chown -R www-data:www-data /var/www/html
+WORKDIR /var/www/html
+
+EXPOSE 80
