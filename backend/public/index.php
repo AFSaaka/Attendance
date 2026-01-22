@@ -28,27 +28,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // --- NEW: DATABASE CONNECTION TEST ROUTE ---
 if (isset($_GET['test_db'])) {
-    $dbUrl = getenv('DATABASE_URL'); // Fetched from Render Environment Variables
+    $dbUrl = getenv('DATABASE_URL');
     try {
-        if (!$dbUrl) throw new Exception("DATABASE_URL not found in Environment Variables.");
+        if (!$dbUrl) throw new Exception("DATABASE_URL not found.");
+
+        // Parse the URL into its components
+        $parsedUrl = parse_url($dbUrl);
         
-        $dsn = "pgsql:" . str_replace("postgresql://", "host=", $dbUrl);
-        $pdo = new PDO($dsn);
+        $host = $parsedUrl['host'];
+        $port = $parsedUrl['port'] ?? 5432;
+        $user = $parsedUrl['user'];
+        $pass = $parsedUrl['pass'];
+        $dbname = ltrim($parsedUrl['path'], '/');
+
+        // Construct the DSN in the format PHP PDO requires
+        $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require";
+        
+        // Pass user and password as separate arguments to the PDO constructor
+        $pdo = new PDO($dsn, $user, $pass);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        // Count tables in your Neon DB to verify data import
         $stmt = $pdo->query("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'");
         $count = $stmt->fetchColumn();
 
         echo json_encode([
             "status" => "success",
-            "message" => "Render is talking to Neon!",
-            "tables_found" => $count,
-            "php_version" => PHP_VERSION
+            "message" => "Connection Refined & Successful!",
+            "tables_found" => $count
         ]);
     } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        echo json_encode(["status" => "error", "message" => "DNS/Format Error: " . $e->getMessage()]);
     }
     exit;
 }
