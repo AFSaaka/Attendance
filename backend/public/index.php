@@ -1,6 +1,11 @@
 <?php
 // backend/public/index.php
 
+// 0. Configure Session Cookies for Cross-Site (Netlify to Render)
+ini_set('session.cookie_samesite', 'None');
+ini_set('session.cookie_secure', '1'); // Required if SameSite is 'None'
+ini_set('session.cookie_httponly', '1');
+
 // 1. DYNAMIC CORS (Allow Localhost for dev AND your future Netlify URL)
 $allowed_origins = [
     "http://localhost:5173",

@@ -3,17 +3,29 @@
 
 /**
  * 1. SESSION SECURITY (THE LOCK ON THE FRONT DOOR)
- * We set these before starting the session to tell the browser:
- * "Only the website can touch these cookies, not malicious scripts."
  */
 if (session_status() === PHP_SESSION_NONE) {
-    ini_set('session.cookie_httponly', 1); // Prevents JavaScript from stealing the session ID
-    ini_set('session.use_only_cookies', 1); // Forces the browser to only use cookies (safer)
-    ini_set('session.cookie_samesite', 'Lax'); // Protects against some types of "fake request" attacks
+    // Detect if we are on Render (Production) or Local
+    $isProduction = getenv('DATABASE_URL') ? true : false;
+
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_only_cookies', 1);
+
+    // PRODUCTION SETTINGS
+    if ($isProduction) {
+        // 'None' is MANDATORY for Cross-Site (Netlify -> Render)
+        ini_set('session.cookie_samesite', 'None');
+        $secure = true; 
+    } else {
+        // LOCAL SETTINGS
+        ini_set('session.cookie_samesite', 'Lax');
+        $secure = false;
+    }
 
     session_start([
-        'cookie_lifetime' => 86400, // Stay logged in for 24 hours
-        'cookie_secure'   => false,  // IMPORTANT: Set to TRUE once you have an SSL certificate (HTTPS)
+        'cookie_lifetime' => 86400,
+        'cookie_secure'   => $secure, // TRUE on Render (HTTPS)
+        'cookie_path'     => '/',
     ]);
 }
 
