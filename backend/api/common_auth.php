@@ -5,22 +5,27 @@
  * 1. SESSION SECURITY (THE LOCK ON THE FRONT DOOR)
  */
 if (session_status() === PHP_SESSION_NONE) {
+    // Detect if we are on Render (Production) or Local
     $isProduction = getenv('DATABASE_URL') ? true : false;
 
-    // Standard security sets
     ini_set('session.cookie_httponly', 1);
     ini_set('session.use_only_cookies', 1);
 
-    // Prepare variables for the array
-    $samesite = $isProduction ? 'None' : 'Lax';
-    $secure   = $isProduction ? true : false;
+    // PRODUCTION SETTINGS
+    if ($isProduction) {
+        // 'None' is MANDATORY for Cross-Site (Netlify -> Render)
+        ini_set('session.cookie_samesite', 'None');
+        $secure = true; 
+    } else {
+        // LOCAL SETTINGS
+        ini_set('session.cookie_samesite', 'Lax');
+        $secure = false;
+    }
 
     session_start([
         'cookie_lifetime' => 86400,
+        'cookie_secure'   => $secure, // TRUE on Render (HTTPS)
         'cookie_path'     => '/',
-        'cookie_secure'   => $secure,   // Mandatory for SameSite=None
-        'cookie_httponly' => true,
-        'samesite'        => $samesite, // The "Secret Sauce" for Netlify + Render
     ]);
 }
 
