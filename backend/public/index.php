@@ -4,7 +4,7 @@
 // 1. DYNAMIC CORS (Allow Localhost for dev AND your future Netlify URL)
 $allowed_origins = [
     "http://localhost:5173",
-    "https://your-netlify-app-name.netlify.app" // Add this once you have it
+    "https://ttfpp-attendance.netlify.app" // Add this once you have it
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
