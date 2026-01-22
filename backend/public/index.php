@@ -1,10 +1,21 @@
 <?php
 // backend/public/index.php
 
-// 1. MUST match your React URL
-$allowed_origin = "http://localhost:5173";
+// 1. DYNAMIC CORS (Allow Localhost for dev AND your future Netlify URL)
+$allowed_origins = [
+    "http://localhost:5173",
+    "https://your-netlify-app-name.netlify.app" // Add this once you have it
+];
 
-header("Access-Control-Allow-Origin: $allowed_origin");
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: $origin");
+} else {
+    // Fallback for testing or public access
+    header("Access-Control-Allow-Origin: *"); 
+}
+
 header("Access-Control-Allow-Credentials: true");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
@@ -15,9 +26,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// --- NEW: DATABASE CONNECTION TEST ROUTE ---
+if (isset($_GET['test_db'])) {
+    $dbUrl = getenv('DATABASE_URL'); // Fetched from Render Environment Variables
+    try {
+        if (!$dbUrl) throw new Exception("DATABASE_URL not found in Environment Variables.");
+        
+        $dsn = "pgsql:" . str_replace("postgresql://", "host=", $dbUrl);
+        $pdo = new PDO($dsn);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // Count tables in your Neon DB to verify data import
+        $stmt = $pdo->query("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'");
+        $count = $stmt->fetchColumn();
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Render is talking to Neon!",
+            "tables_found" => $count,
+            "php_version" => PHP_VERSION
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+    exit;
+}
+// --- END TEST ROUTE ---
 
 // 2. Extract the URL
 $url = isset($_GET['url']) ? rtrim($_GET['url'], '/') : '';
+
+
 
 // 3. Updated Routing Table (MUST INCLUDE ALL ENDPOINTS)
 $routes = [
