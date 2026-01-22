@@ -60,7 +60,13 @@ const AdminModal = ({ isOpen, onClose, onRefresh }) => {
         });
       }
 
-      if (onRefresh) onRefresh();
+      if (onRefresh) {
+        onClose();
+        setTimeout(() => {
+          onRefresh();
+        }, 300);
+      }
+
       if (activeTab === "bulk") setTimeout(resetModal, 2000);
     } catch (err) {
       setStatus({

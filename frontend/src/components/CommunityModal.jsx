@@ -76,7 +76,13 @@ const CommunityModal = ({ isOpen, onClose, onRefresh }) => {
         message: "Community data saved successfully!",
       });
 
-      if (onRefresh) onRefresh();
+      if (onRefresh) {
+        onClose();
+        setTimeout(() => {
+          onRefresh();
+        }, 300);
+      }
+
       setTimeout(resetModal, 2000);
     } catch (err) {
       setStatus({
