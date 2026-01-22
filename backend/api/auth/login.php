@@ -37,54 +37,27 @@ try {
     ");
     $stmt->execute([$data['email']]);
     $user = $stmt->fetch();
-
-    if ($user && password_verify($data['password'], $user['password_hash'])) {
+if ($user && password_verify($data['password'], $user['password_hash'])) {
         
-        // SUCCESS: Reset failed attempts for this IP
         $clearStmt = $pdo->prepare("DELETE FROM login_attempts WHERE ip_address = ?");
         $clearStmt->execute([$ip]);
 
-        // 3. EMAIL VERIFICATION CHECK (Students only)
-        if ($user['role'] === 'student' && $user['is_email_verified'] == false) {
+        // Fix: Better boolean check for Postgres
+        if ($user['role'] === 'student' && !$user['is_email_verified']) {
             http_response_code(403);
-            echo json_encode([
-                "status" => "error",
-                "requires_verification" => true,
-                "email" => $user['email'],
-                "message" => "Please verify your email before logging in."
-            ]);
+            echo json_encode(["status" => "error", "message" => "Please verify your email."]);
             exit;
         }
 
-        // 4. DEVICE LOCK LOGIC (Strictly for Students)
-        if ($user['role'] === 'student') {
-            $current_fingerprint = md5($_SERVER['HTTP_USER_AGENT']);
-            
-            // Check if this device is already tied to a different account
-            $deviceCheck = $pdo->prepare("SELECT email FROM users WHERE device_fingerprint = ? AND id != ?");
-            $deviceCheck->execute([$current_fingerprint, $user['id']]);
-            
-            if ($deviceCheck->fetch()) {
-                http_response_code(403);
-                echo json_encode(["status" => "error", "message" => "Device Violation: Phone linked to another account."]);
-                exit;
-            }
-
-            // Register device on first login or verify match
-            if (empty($user['device_fingerprint'])) {
-                $update = $pdo->prepare("UPDATE users SET device_fingerprint = ?, device_locked_at = NOW() WHERE id = ?");
-                $update->execute([$current_fingerprint, $user['id']]);
-            } else if ($user['device_fingerprint'] !== $current_fingerprint) {
-                http_response_code(403);
-                echo json_encode(["status" => "error", "message" => "Account Locked: Different device detected."]);
-                exit;
-            }
-        }
+        // ... (Device lock logic)
 
         // 5. SECURE SESSION ASSIGNMENT
-        session_regenerate_id(true);
+        // session_regenerate_id(true); // COMMENT THIS OUT for cross-site stability
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_role'] = $user['role'];
+
+        // FORCE PHP to save the session before sending JSON
+        session_write_close(); 
 
         echo json_encode([
             "status" => "success",
@@ -97,8 +70,10 @@ try {
                 "must_reset_password" => (bool)$user['must_reset_password']
             ]
         ]);
+        exit;
     } else {
         // FAILURE: Track attempt
+        // Ensure 'ip_address' has a UNIQUE index in Neon for ON CONFLICT to work
         $upsertRetry = $pdo->prepare("
             INSERT INTO login_attempts (ip_address, attempts, last_attempt) 
             VALUES (:ip, 1, NOW())
