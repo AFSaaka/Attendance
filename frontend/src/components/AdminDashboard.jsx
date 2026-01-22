@@ -65,6 +65,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const closeModal = () => setActiveModal(null);
 
   const fetchStats = async (isInitial = false) => {
+    if (activeModal) return;
     if (isInitial) setLoading(true);
     else setIsRefreshing(true);
 

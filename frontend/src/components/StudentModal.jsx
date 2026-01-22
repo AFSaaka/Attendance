@@ -62,7 +62,13 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
         });
         setFile(null);
       }
-      if (onRefresh) onRefresh();
+      if (onRefresh) {
+  onClose();
+  setTimeout(() => {
+    onRefresh();
+  }, 300);
+}
+
     } catch (err) {
       setStatus({
         type: "error",
@@ -276,6 +282,7 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
             type="submit"
             style={loading ? styles.btnDisabled : styles.btnActive}
             disabled={loading}
+            onClick={(e) => loading && e.preventDefault()}
           >
             {loading ? (
               <Loader2 size={18} className="animate-spin" />
