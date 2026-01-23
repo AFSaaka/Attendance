@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Routes,
   Route,
@@ -18,7 +18,7 @@ import CommunityList from "./CommunityList";
 import AdminList from "./AdminList";
 import RecentActivity from "./RecentActivity";
 import AttendanceExportModal from "./AttendanceExportModal";
-import SessionManager from "./SessionManager"; // The component we just finished
+import SessionManager from "./SessionManager";
 
 import {
   Users,
@@ -30,7 +30,8 @@ import {
   Map,
   Lock,
   Archive,
-  CalendarDays, // New icon for sessions
+  CalendarDays,
+  Loader2,
 } from "lucide-react";
 
 const AdminDashboard = ({ user, onLogout }) => {
@@ -46,11 +47,18 @@ const AdminDashboard = ({ user, onLogout }) => {
     total_communities: 0,
   });
 
+  // Use ref to track modal state - this prevents re-renders from closing modals
+  const activeModalRef = useRef(null);
+  const [activeModal, setActiveModal] = useState(null);
+
   useEffect(() => {
     document.title = "TTFPP | Admin Dashboard";
   }, []);
 
-  const [activeModal, setActiveModal] = useState(null);
+  useEffect(() => {
+    // Keep ref in sync with state
+    activeModalRef.current = activeModal;
+  }, [activeModal]);
 
   const getActiveTab = () => {
     const path = location.pathname;
@@ -64,10 +72,15 @@ const AdminDashboard = ({ user, onLogout }) => {
   const handleAddAction = (actionType) => setActiveModal(actionType);
   const closeModal = () => setActiveModal(null);
 
-  const fetchStats = async (isInitial = false) => {
-    if (activeModal) return;
+  const fetchStats = async (isInitial = false, silent = false) => {
+    // CRITICAL: Don't fetch if a modal is open (prevents modal from closing)
+    if (activeModalRef.current && !silent) {
+      console.log("Skipping stats refresh - modal is open");
+      return;
+    }
+
     if (isInitial) setLoading(true);
-    else setIsRefreshing(true);
+    else if (!silent) setIsRefreshing(true);
 
     setError(null);
     try {
@@ -75,7 +88,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       setStats(res.data?.stats || res.data);
     } catch (err) {
       console.error("Dashboard Load Failure:", err);
-      setError("Failed to load metrics.");
+      if (!silent) setError("Failed to load metrics.");
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -100,6 +113,24 @@ const AdminDashboard = ({ user, onLogout }) => {
       maxWidth: "1200px",
       margin: "0 auto",
       width: "100%",
+      position: "relative",
+    },
+    refreshIndicator: {
+      position: "fixed",
+      top: "20px",
+      right: "20px",
+      backgroundColor: "rgba(25, 129, 4, 0.95)",
+      color: "white",
+      padding: "10px 16px",
+      borderRadius: "8px",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      fontSize: "13px",
+      fontWeight: "600",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+      zIndex: 1000,
+      animation: "slideIn 0.3s ease",
     },
     topBar: {
       display: "flex",
@@ -164,7 +195,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       borderRadius: "12px",
       textAlign: "center",
       border: "none",
-      boxShadow: "2px 2px 2px  rgba(3, 194, 18, 1)",
+      boxShadow: "2px 2px 2px rgba(3, 194, 18, 1)",
     },
     contentCard: {
       backgroundColor: "#fff",
@@ -222,6 +253,14 @@ const AdminDashboard = ({ user, onLogout }) => {
   return (
     <div style={styles.container}>
       <Navbar onLogout={onLogout} userEmail={user?.email} />
+
+      {/* Subtle refresh indicator */}
+      {isRefreshing && (
+        <div style={styles.refreshIndicator}>
+          <Loader2 size={16} className="animate-spin" />
+          Updating...
+        </div>
+      )}
 
       <main style={styles.main}>
         <div style={styles.topBar}>
@@ -345,17 +384,24 @@ const AdminDashboard = ({ user, onLogout }) => {
         <StudentModal
           isOpen={activeModal === "student"}
           onClose={closeModal}
-          onRefresh={fetchStats}
+          onRefresh={() => {
+            // Delayed silent refresh after modal closes
+            setTimeout(() => fetchStats(false, false), 500);
+          }}
         />
         <CommunityModal
           isOpen={activeModal === "community"}
           onClose={closeModal}
-          onRefresh={fetchStats}
+          onRefresh={() => {
+            setTimeout(() => fetchStats(false, false), 500);
+          }}
         />
         <AdminModal
           isOpen={activeModal === "admin"}
           onClose={closeModal}
-          onRefresh={fetchStats}
+          onRefresh={() => {
+            setTimeout(() => fetchStats(false, false), 500);
+          }}
         />
         <AttendanceExportModal
           isOpen={isExportModalOpen}
@@ -363,6 +409,27 @@ const AdminDashboard = ({ user, onLogout }) => {
         />
       </main>
       <Footer />
+
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        
+        .animate-spin {
+          animation: spin 1s linear infinite;
+        }
+      `}</style>
     </div>
   );
 };

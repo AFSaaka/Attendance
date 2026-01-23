@@ -63,12 +63,8 @@ const StudentModal = ({ isOpen, onClose, onRefresh }) => {
         setFile(null);
       }
       if (onRefresh) {
-  onClose();
-  setTimeout(() => {
-    onRefresh();
-  }, 300);
-}
-
+        onClose();
+      }
     } catch (err) {
       setStatus({
         type: "error",
