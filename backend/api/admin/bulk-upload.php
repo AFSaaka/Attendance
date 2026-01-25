@@ -72,7 +72,11 @@ try {
     // 5. THE LOOP (With Savepoints)
     foreach ($rows as $index => $row) {
         $row = array_map('trim', $row);
-        if (empty(array_filter($row))) continue;
+        // TEMPORARY DEBUG: This will tell us why it's skipping
+    if (empty(array_filter($row))) {
+        error_log("Row " . ($index + 2) . " skipped because it is empty.");
+        continue;
+    }
 
         if (count($row) < 8) {
             $errors[] = "Row " . ($index + 2) . ": Missing columns.";
