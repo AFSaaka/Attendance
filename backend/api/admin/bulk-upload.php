@@ -6,8 +6,7 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
 
-// 1. SECURITY: Only Admins/Superadmins
-requireAdmin();
+requireAdmin(); // Custom instruction: Only superadmins/admins
 
 if (!isset($_FILES['student_file'])) {
     http_response_code(400);
@@ -19,47 +18,46 @@ $filePath  = $_FILES['student_file']['tmp_name'];
 $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
 
 try {
-    $pdo->beginTransaction();
-    
-    // 2. FETCH CURRENT SESSION
+    // 1. SESSION CHECK (Do this BEFORE starting transaction)
     $session_id = $pdo->query("SELECT id FROM public.academic_sessions WHERE is_current = true LIMIT 1")->fetchColumn();
     if (!$session_id) {
-        throw new Exception("No active academic session found. Please set a current session first.");
+        throw new Exception("No active academic session found.");
     }
 
+    // 2. PARSE FILE
     $rows = [];
-    // 3. SECURE FILE PARSING
     if ($extension === 'csv') {
         if (($handle = fopen($filePath, "r")) !== FALSE) {
-            fgetcsv($handle); // Skip header
-            while (($data = fgetcsv($handle)) !== FALSE) {
-                $rows[] = $data;
-            }
+            fgetcsv($handle); 
+            while (($data = fgetcsv($handle)) !== FALSE) { $rows[] = $data; }
             fclose($handle);
         }
     } elseif ($extension === 'xlsx') {
         if ($xlsx = SimpleXLSX::parse($filePath)) {
             $rows = $xlsx->rows();
-            array_shift($rows); // Skip header
+            array_shift($rows); 
         } else {
             throw new Exception("Excel parse error: " . SimpleXLSX::parseError());
         }
     } else {
-        throw new Exception("Invalid file type. Only .csv or .xlsx allowed.");
+        throw new Exception("Invalid file type.");
     }
+
+    // 3. START TRANSACTION
+    $pdo->beginTransaction();
 
     $successCount = 0;
     $errors = [];
+    $processedUins = []; // Local cache to detect duplicates in the file
 
-    // 4. PREPARE STATEMENTS (Performance: Prepare once, execute many)
+    // 4. PREPARE STATEMENTS
     $stmtRegistry = $pdo->prepare("
         INSERT INTO public.student_registry 
         (uin, index_number, full_name, program, region, district, community, is_deleted) 
         VALUES (?, ?, ?, ?, ?, ?, ?, false) 
-        ON CONFLICT (index_number) 
-        DO UPDATE SET 
+        ON CONFLICT (index_number) DO UPDATE SET 
             full_name = EXCLUDED.full_name,
-            uin = EXCLUDED.uin, -- Update UIN in case it changed
+            uin = EXCLUDED.uin,
             is_deleted = false 
         RETURNING id
     ");
@@ -68,84 +66,74 @@ try {
         INSERT INTO public.student_enrollments 
         (registry_id, session_id, level, program, region, district, community) 
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (registry_id, session_id) 
-        DO UPDATE SET 
-            level = EXCLUDED.level,
-            program = EXCLUDED.program,
-            region = EXCLUDED.region,
-            district = EXCLUDED.district,
-            community = EXCLUDED.community
+        ON CONFLICT (registry_id, session_id) DO UPDATE SET level = EXCLUDED.level
     ");
 
-    // 5. DATA PROCESSING LOOP
+    // 5. THE LOOP (With Savepoints)
     foreach ($rows as $index => $row) {
-        // Data Cleanup
         $row = array_map('trim', $row);
-        
-        // Skip truly empty rows
         if (empty(array_filter($row))) continue;
 
         if (count($row) < 8) {
-            $errors[] = "Row " . ($index + 2) . ": Insufficient columns.";
+            $errors[] = "Row " . ($index + 2) . ": Missing columns.";
             continue;
         }
 
         [$uin, $idx, $name, $prog, $reg, $dist, $comm, $level] = $row;
 
-        if (empty($uin) || empty($idx) || empty($name)) {
-            $errors[] = "Row " . ($index + 2) . ": Missing required fields (UIN, Index, or Name).";
+        // Check for duplicates within the uploaded file itself
+        if (isset($processedUins[$uin])) {
+            $errors[] = "Row " . ($index + 2) . ": Duplicate UIN ($uin) found within the file.";
             continue;
         }
+        $processedUins[$uin] = true;
 
         try {
-            // Upsert Registry
+            // POSTGRES FIX: Create a Savepoint for this specific row
+            $spName = "row_" . $index;
+            $pdo->exec("SAVEPOINT $spName");
+
             $stmtRegistry->execute([$uin, $idx, $name, $prog, $reg, $dist, $comm]);
             $registry_id = $stmtRegistry->fetchColumn();
 
-            // Upsert Enrollment
+            if (!$registry_id) {
+                // If fetchColumn fails, the Index Number conflict logic might have returned nothing
+                throw new Exception("Could not retrieve Registry ID.");
+            }
+
             $stmtEnroll->execute([$registry_id, $session_id, $level, $prog, $reg, $dist, $comm]);
             
             $successCount++;
+            
+            // Success: Clean up the savepoint
+            $pdo->exec("RELEASE SAVEPOINT $spName");
+
         } catch (PDOException $e) {
-            // Check for UIN conflict specifically
+            // ROLLBACK to the start of this row only
+            $pdo->exec("ROLLBACK TO SAVEPOINT $spName");
+            
             if ($e->getCode() == '23505') {
-                $errors[] = "Row " . ($index + 2) . ": UIN or Index Number already exists for another student.";
+                $errors[] = "Row " . ($index + 2) . ": Database Conflict (UIN $uin likely exists elsewhere).";
             } else {
-                throw $e; // Re-throw major DB errors to trigger rollback
+                $errors[] = "Row " . ($index + 2) . ": DB Error: " . $e->getMessage();
             }
         }
     }
 
-    // 6. ENHANCED AUDIT LOGGING
-    $logStmt = $pdo->prepare("
-        INSERT INTO public.audit_logs (user_id, action_type, session_id, target_id, details, ip_address) 
-        VALUES (?, 'BULK_UPLOAD', ?, NULL, ?, ?)
-    ");
-    
-    $details = json_encode([
-        "filename" => $fileName,
-        "total_processed" => $successCount,
-        "errors_encountered" => count($errors),
-        "error_list" => array_slice($errors, 0, 10) // Store first 10 errors for debugging
-    ]);
-
+    // 6. LOGGING & COMMIT
+    $logStmt = $pdo->prepare("INSERT INTO public.audit_logs (user_id, action_type, details, ip_address) VALUES (?, 'BULK_UPLOAD', ?, ?)");
     $logStmt->execute([
         $currentUser['id'], 
-        $session_id,
-        $details,
+        json_encode(["file" => $fileName, "success" => $successCount, "errors" => count($errors)]),
         $_SERVER['REMOTE_ADDR']
     ]);
 
     $pdo->commit();
-    echo json_encode([
-        "status" => "success", 
-        "count" => $successCount, 
-        "errors" => $errors
-    ]);
+    echo json_encode(["status" => "success", "count" => $successCount, "errors" => $errors]);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    error_log("Bulk Upload Error: " . $e->getMessage());
+    error_log("Critical Upload Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Critical upload failure: " . $e->getMessage()]);
+    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
 }
