@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Routes,
   Route,
@@ -9,21 +9,20 @@ import {
 import Navbar from "./navbar";
 import Footer from "./footer";
 import AdminHeader from "./AdminHeader";
-import axios from "../api/axios";
+import useAdminStats from "../hooks/useAdminStats";
 import StudentModal from "./StudentModal";
 import CommunityModal from "./CommunityModal";
 import AdminModal from "./AdminModal";
+import AttendanceExportModal from "./AttendanceExportModal";
 import StudentList from "./StudentList";
 import CommunityList from "./CommunityList";
 import AdminList from "./AdminList";
 import RecentActivity from "./RecentActivity";
-import AttendanceExportModal from "./AttendanceExportModal";
 import SessionManager from "./SessionManager";
 
 import {
   Users,
   MapPin,
-  ShieldCheck,
   Activity,
   LayoutDashboard,
   GraduationCap,
@@ -34,268 +33,204 @@ import {
   Loader2,
 } from "lucide-react";
 
-const AdminDashboard = ({ user, onLogout }) => {
+/* ===================== STYLES ===================== */
+
+const styles = {
+  container: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: "#f0f2f5",
+    width: "100%",
+  },
+  main: {
+    flex: 1,
+    padding: "40px 5%",
+    maxWidth: "1200px",
+    margin: "0 auto",
+    width: "100%",
+    position: "relative",
+  },
+  refreshIndicator: {
+    position: "fixed",
+    top: "20px",
+    right: "20px",
+    backgroundColor: "rgba(25, 129, 4, 0.95)",
+    color: "white",
+    padding: "10px 16px",
+    borderRadius: "8px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "13px",
+    fontWeight: "600",
+    zIndex: 1000,
+  },
+  topBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "20px",
+  },
+  actionGroup: { display: "flex", gap: "10px" },
+  exportTriggerBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    backgroundColor: "#1e293b",
+    color: "white",
+    padding: "10px 16px",
+    borderRadius: "8px",
+    border: "none",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
+  sessionBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    backgroundColor: "#198104",
+    color: "white",
+    padding: "10px 16px",
+    borderRadius: "8px",
+    border: "none",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
+  tabContainer: {
+    display: "flex",
+    gap: "20px",
+    marginBottom: "25px",
+    borderBottom: "1px solid #ddd",
+  },
+  tab: {
+    padding: "10px 15px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    textDecoration: "none",
+    fontWeight: "600",
+    color: "#64748b",
+    borderBottom: "3px solid transparent",
+  },
+  activeTab: { color: "#198104", borderBottom: "3px solid #198104" },
+  statGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+    gap: "20px",
+    marginBottom: "30px",
+  },
+  statCard: {
+    backgroundColor: "#ffffff",
+    padding: "20px",
+    borderRadius: "12px",
+    textAlign: "center",
+    boxShadow: "2px 2px 2px rgba(3, 194, 18, 1)",
+  },
+  contentCard: {
+    backgroundColor: "#fff",
+    padding: "20px",
+    borderRadius: "12px",
+  },
+};
+
+/* ===================== OVERVIEW ===================== */
+
+const OverviewContent = ({ stats, error, user }) => (
+  <>
+    <div style={styles.statGrid}>
+      <div style={styles.statCard}>
+        <Users size={24} color="#198104" />
+        <h3>{`${stats.registered_students}/${stats.total_students}`}</h3>
+        <p>Registered Students</p>
+        {error && <small style={{ color: "red" }}>{error}</small>}
+      </div>
+
+      <div style={styles.statCard}>
+        <MapPin size={24} color="#198104" />
+        <h3>{stats.total_communities}</h3>
+        <p>Communities</p>
+      </div>
+    </div>
+
+    <div style={styles.contentCard}>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
+        <Activity size={20} />
+        <h3 style={{ margin: 0 }}>Recent System Activity</h3>
+      </div>
+
+      {user?.admin_level === "super_admin" ? (
+        <RecentActivity />
+      ) : (
+        <p style={{ color: "#666", textAlign: "center" }}>
+          Activity logs are restricted to Super Administrators.
+        </p>
+      )}
+    </div>
+  </>
+);
+
+/* ===================== DASHBOARD (NO MODALS) ===================== */
+
+const AdminDashboard = ({ user, onLogout, onOpenModal, onOpenExport }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    registered_students: 0,
-    total_students: 0,
-    total_communities: 0,
-  });
 
-  // Use ref to track modal state - this prevents re-renders from closing modals
-  const activeModalRef = useRef(null);
-  const [activeModal, setActiveModal] = useState(null);
-
-  useEffect(() => {
-    document.title = "TTFPP | Admin Dashboard";
-  }, []);
-
-  useEffect(() => {
-    // Keep ref in sync with state
-    activeModalRef.current = activeModal;
-  }, [activeModal]);
+  const { stats, isRefreshing, error } = useAdminStats();
 
   const getActiveTab = () => {
-    const path = location.pathname;
-    if (path.includes("/students")) return "students";
-    if (path.includes("/communities")) return "communities";
-    if (path.includes("/admins")) return "admins";
-    if (path.includes("/sessions")) return "sessions";
+    const p = location.pathname;
+    if (p.includes("/students")) return "students";
+    if (p.includes("/communities")) return "communities";
+    if (p.includes("/admins")) return "admins";
+    if (p.includes("/sessions")) return "sessions";
     return "overview";
   };
 
-  const handleAddAction = (actionType) => setActiveModal(actionType);
-  const closeModal = () => setActiveModal(null);
-
-  const fetchStats = async (isInitial = false, silent = false) => {
-    // CRITICAL: Don't fetch if a modal is open (prevents modal from closing)
-    if (activeModalRef.current && !silent) {
-      console.log("Skipping stats refresh - modal is open");
-      return;
-    }
-
-    if (isInitial) setLoading(true);
-    else if (!silent) setIsRefreshing(true);
-
-    setError(null);
-    try {
-      const res = await axios.get("/admin/stats");
-      setStats(res.data?.stats || res.data);
-    } catch (err) {
-      console.error("Dashboard Load Failure:", err);
-      if (!silent) setError("Failed to load metrics.");
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStats(true);
-  }, []);
-
-  const styles = {
-    container: {
-      minHeight: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      backgroundColor: "#f0f2f5",
-      width: "100vw",
-    },
-    main: {
-      flex: 1,
-      padding: "40px 5%",
-      maxWidth: "1200px",
-      margin: "0 auto",
-      width: "100%",
-      position: "relative",
-    },
-    refreshIndicator: {
-      position: "fixed",
-      top: "20px",
-      right: "20px",
-      backgroundColor: "rgba(25, 129, 4, 0.95)",
-      color: "white",
-      padding: "10px 16px",
-      borderRadius: "8px",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      fontSize: "13px",
-      fontWeight: "600",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      zIndex: 1000,
-      animation: "slideIn 0.3s ease",
-    },
-    topBar: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px",
-    },
-    actionGroup: { display: "flex", gap: "10px" },
-    exportTriggerBtn: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      backgroundColor: "#1e293b",
-      color: "white",
-      padding: "10px 16px",
-      borderRadius: "8px",
-      border: "none",
-      fontWeight: "600",
-      cursor: "pointer",
-    },
-    sessionBtn: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      backgroundColor: "#198104",
-      color: "white",
-      padding: "10px 16px",
-      borderRadius: "8px",
-      border: "none",
-      fontWeight: "600",
-      cursor: "pointer",
-    },
-    tabContainer: {
-      display: "flex",
-      gap: "20px",
-      marginBottom: "25px",
-      borderBottom: "1px solid #ddd",
-      overflowX: "auto",
-    },
-    tab: {
-      padding: "10px 15px",
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      textDecoration: "none",
-      fontWeight: "600",
-      color: "#64748b",
-      borderBottom: "3px solid transparent",
-      transition: "all 0.2s ease",
-    },
-    activeTab: { color: "#198104", borderBottom: "3px solid #198104" },
-    statGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-      gap: "20px",
-      marginBottom: "30px",
-    },
-    statCard: {
-      backgroundColor: "#ffffffff",
-      padding: "20px",
-      borderRadius: "12px",
-      textAlign: "center",
-      border: "none",
-      boxShadow: "2px 2px 2px rgba(3, 194, 18, 1)",
-    },
-    contentCard: {
-      backgroundColor: "#fff",
-      padding: "20px",
-      borderRadius: "12px",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-    },
-  };
-
-  const OverviewContent = () => (
-    <>
-      <div style={styles.statGrid}>
-        <div style={styles.statCard}>
-          <Users size={24} color="#198104" />
-          <h3>
-            {loading
-              ? "..."
-              : `${stats.registered_students}/${stats.total_students}`}
-          </h3>
-          <p>Registered Students</p>
-          {error && <small style={{ color: "red" }}>{error}</small>}
-        </div>
-        <div style={styles.statCard}>
-          <MapPin size={24} color="#198104" style={{ marginBottom: "10px" }} />
-          <h3>{loading ? "..." : stats.total_communities || 0}</h3>
-          <p>Communities</p>
-        </div>
-      </div>
-
-      <div style={styles.contentCard}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            marginBottom: "15px",
-          }}
-        >
-          <Activity size={20} color="#666" />
-          <h3 style={{ margin: 0 }}>Recent System Activity</h3>
-        </div>
-        {user?.admin_level === "super_admin" ? (
-          <RecentActivity />
-        ) : (
-          <div style={{ padding: "20px", textAlign: "center", color: "#666" }}>
-            <p>Activity logs are restricted to Super Administrators.</p>
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  const activeTabName = getActiveTab();
+  const activeTab = getActiveTab();
 
   return (
     <div style={styles.container}>
       <Navbar onLogout={onLogout} userEmail={user?.email} />
 
-      {/* Subtle refresh indicator */}
       {isRefreshing && (
         <div style={styles.refreshIndicator}>
           <Loader2 size={16} className="animate-spin" />
-          Updating...
+          Updating…
         </div>
       )}
 
       <main style={styles.main}>
         <div style={styles.topBar}>
-          <h1 style={{ fontSize: "24px", color: "#1e293b", margin: 0 }}>
+          <h1>
             {user?.admin_level === "super_admin" ? "Super Admin" : "Admin"}{" "}
             Control Panel
           </h1>
+
           <div style={styles.actionGroup}>
             {user?.admin_level === "super_admin" && (
               <button
-                onClick={() => navigate("/admin/sessions")}
                 style={styles.sessionBtn}
+                onClick={() => navigate("/admin/sessions")}
               >
-                <CalendarDays size={18} /> Set Academic Session
+                <CalendarDays size={18} /> Set Session
               </button>
             )}
-            <button
-              onClick={() => setIsExportModalOpen(true)}
-              style={styles.exportTriggerBtn}
-            >
+
+            <button style={styles.exportTriggerBtn} onClick={onOpenExport}>
               <Archive size={18} /> Export Center
             </button>
           </div>
         </div>
 
-        <header style={{ marginBottom: "20px" }}>
-          <AdminHeader user={user} onAction={handleAddAction} />
-        </header>
+        <AdminHeader user={user} onAction={onOpenModal} />
 
         <div style={styles.tabContainer}>
           <Link
             to="/admin"
             style={{
               ...styles.tab,
-              ...(activeTabName === "overview" ? styles.activeTab : {}),
+              ...(activeTab === "overview" && styles.activeTab),
             }}
           >
             <LayoutDashboard size={18} /> Overview
@@ -304,7 +239,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             to="/admin/students"
             style={{
               ...styles.tab,
-              ...(activeTabName === "students" ? styles.activeTab : {}),
+              ...(activeTab === "students" && styles.activeTab),
             }}
           >
             <GraduationCap size={18} /> Students
@@ -313,7 +248,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             to="/admin/communities"
             style={{
               ...styles.tab,
-              ...(activeTabName === "communities" ? styles.activeTab : {}),
+              ...(activeTab === "communities" && styles.activeTab),
             }}
           >
             <Map size={18} /> Communities
@@ -324,7 +259,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 to="/admin/sessions"
                 style={{
                   ...styles.tab,
-                  ...(activeTabName === "sessions" ? styles.activeTab : {}),
+                  ...(activeTab === "sessions" && styles.activeTab),
                 }}
               >
                 <CalendarDays size={18} /> Sessions
@@ -333,7 +268,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                 to="/admin/admins"
                 style={{
                   ...styles.tab,
-                  ...(activeTabName === "admins" ? styles.activeTab : {}),
+                  ...(activeTab === "admins" && styles.activeTab),
                 }}
               >
                 <Lock size={18} /> System Admins
@@ -343,95 +278,73 @@ const AdminDashboard = ({ user, onLogout }) => {
         </div>
 
         <Routes>
-          <Route path="/" element={<OverviewContent />} />
           <Route
-            path="/students"
+            index
             element={
-              <div style={styles.contentCard}>
-                <StudentList />
-              </div>
+              <OverviewContent stats={stats} error={error} user={user} />
             }
           />
-          <Route
-            path="/communities"
-            element={
-              <div style={styles.contentCard}>
-                <div style={{ marginBottom: "20px" }}>
-                  <h3 style={{ margin: 0 }}>Community Map Registry</h3>
-                  <p style={{ color: "#666", fontSize: "14px" }}>
-                    Manage deployment locations.
-                  </p>
-                </div>
-                <CommunityList />
-              </div>
-            }
-          />
+          <Route path="students" element={<StudentList />} />
+          <Route path="communities" element={<CommunityList />} />
           {user?.admin_level === "super_admin" && (
             <>
-              <Route
-                path="/admins"
-                element={
-                  <div style={styles.contentCard}>
-                    <AdminList />
-                  </div>
-                }
-              />
-              <Route path="/sessions" element={<SessionManager />} />
+              <Route path="admins" element={<AdminList />} />
+              <Route path="sessions" element={<SessionManager />} />
             </>
           )}
         </Routes>
-
-        <StudentModal
-          isOpen={activeModal === "student"}
-          onClose={closeModal}
-          onRefresh={() => {
-            // Delayed silent refresh after modal closes
-            setTimeout(() => fetchStats(false, false), 500);
-          }}
-        />
-        <CommunityModal
-          isOpen={activeModal === "community"}
-          onClose={closeModal}
-          onRefresh={() => {
-            setTimeout(() => fetchStats(false, false), 500);
-          }}
-        />
-        <AdminModal
-          isOpen={activeModal === "admin"}
-          onClose={closeModal}
-          onRefresh={() => {
-            setTimeout(() => fetchStats(false, false), 500);
-          }}
-        />
-        <AttendanceExportModal
-          isOpen={isExportModalOpen}
-          onClose={() => setIsExportModalOpen(false)}
-        />
       </main>
-      <Footer />
 
-      <style>{`
-        @keyframes slideIn {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-      `}</style>
+      <Footer />
     </div>
   );
 };
 
-export default AdminDashboard;
+const AdminShell = ({ user, onLogout }) => {
+  // 1. Remove useRef. Use ONLY state for UI.
+  // State is preserved across re-renders; Ref values can be inconsistent during render.
+  const [activeModal, setActiveModal] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  // 2. Memoize these handlers.
+  // This prevents the AdminDashboard from thinking its props changed.
+  const openExport = useCallback(() => setExportOpen(true), []);
+  const closeExport = useCallback(() => setExportOpen(false), []);
+
+  const openModal = useCallback((type) => {
+    setActiveModal(type);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setActiveModal(null);
+  }, []);
+
+  return (
+    <>
+      <AdminDashboard
+        user={user}
+        onLogout={onLogout}
+        onOpenModal={openModal}
+        onOpenExport={openExport}
+      />
+
+      {/* 3. Direct state comparison. No more .current checks */}
+      {activeModal === "student" && (
+        <StudentModal isOpen={true} onClose={closeModal} />
+      )}
+
+      {activeModal === "community" && (
+        <CommunityModal isOpen={true} onClose={closeModal} />
+      )}
+
+      {activeModal === "admin" && (
+        <AdminModal isOpen={true} onClose={closeModal} />
+      )}
+
+      {exportOpen && (
+        <AttendanceExportModal isOpen={true} onClose={closeExport} />
+      )}
+    </>
+  );
+};
+export default AdminShell;

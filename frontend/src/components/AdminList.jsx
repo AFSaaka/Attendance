@@ -106,7 +106,7 @@ const AdminList = ({ currentUser }) => {
         break;
       case "send_all_pending":
         const count = admins.filter(
-          (a) => a.must_reset_password && a.is_active && a.otp_code
+          (a) => a.must_reset_password && a.is_active && a.otp_code,
         ).length;
         config = {
           ...config,
@@ -151,7 +151,7 @@ const AdminList = ({ currentUser }) => {
   const filteredAdmins = admins.filter(
     (a) =>
       a.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      a.email?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -395,4 +395,4 @@ const styles = {
   },
 };
 
-export default AdminList;
+export default React.memo(AdminList);

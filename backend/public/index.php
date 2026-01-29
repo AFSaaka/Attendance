@@ -112,10 +112,8 @@ $routes = [
     'student/sync_attendance' => '../api/student/sync_attendance.php',
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
-    // 'coordinator/audit-summary' => '../api/coordinator/audit-summary.php',
-    // 'coordinator/get_attendance' => '../api/coordinator/get_attendance.php',
-    // 'coordinator/get-communities' => '../api/coordinator/get-communities.php',
-    // 'coordinator/set-community-start-date' => '../api/coordinator/set-community-start-date.php',
+    'auth/verify' => '../api/auth/verify.php',
+   
 ];
 
 if (array_key_exists($url, $routes)) {

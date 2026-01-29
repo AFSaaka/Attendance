@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "../api/axios";
 import {
   Clock,
@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Download,
   Filter,
+  Loader2,
 } from "lucide-react";
 
 const RecentActivity = () => {
@@ -17,11 +18,11 @@ const RecentActivity = () => {
   const [error, setError] = useState(null);
   const [days, setDays] = useState("7");
 
-  const fetchLogs = async () => {
-    setLoading(true);
+  // Wrapped in useCallback to prevent unnecessary re-renders in parent components
+  const fetchLogs = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError(null);
     try {
-      // Endpoint matches your PHP file name
       const res = await axios.get("/admin/get-system-activity");
       if (res.data.status === "success") {
         setLogs(res.data.data);
@@ -33,27 +34,17 @@ const RecentActivity = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [fetchLogs]);
 
   const handleDownload = () => {
     const baseUrl = axios.defaults.baseURL || "";
     const downloadUrl = `${baseUrl}/admin/generate-log-file.?days=${days}`;
     window.location.href = downloadUrl;
   };
-
-  if (loading)
-    return (
-      <div style={{ textAlign: "center", padding: "40px" }}>
-        <div style={styles.spinner}></div>
-        <p style={{ color: "#64748b", marginTop: "10px" }}>
-          Syncing activity...
-        </p>
-      </div>
-    );
 
   return (
     <div>
@@ -77,6 +68,23 @@ const RecentActivity = () => {
             <option value="30">Last 30 Days</option>
             <option value="90">Last 90 Days</option>
           </select>
+
+          {/* Subtle loading indicator instead of a full-page spinner */}
+          {loading && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                marginLeft: "10px",
+              }}
+            >
+              <Loader2 size={14} className="animate-spin" color="#198104" />
+              <span style={{ fontSize: "11px", color: "#198104" }}>
+                Syncing...
+              </span>
+            </div>
+          )}
         </div>
 
         <button onClick={handleDownload} style={styles.downloadBtn}>
@@ -91,14 +99,14 @@ const RecentActivity = () => {
         </div>
       )}
 
-      {/* LOG LIST - Limited to 5 most recent */}
+      {/* LOG LIST - Stable Container */}
       <div style={styles.container}>
-        {logs.length === 0 ? (
+        {logs.length === 0 && !loading ? (
           <p style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
             No recent activity found.
           </p>
         ) : (
-          // .slice(0, 5) ensures only the top 5 are rendered
+          // We show existing logs even if 'loading' is true to prevent layout jumping
           logs.slice(0, 5).map((log) => (
             <div key={log.id} style={styles.card}>
               <div style={styles.header}>
@@ -151,12 +159,22 @@ const RecentActivity = () => {
           </p>
         )}
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+      `}</style>
     </div>
   );
 };
 
 const styles = {
-  container: { display: "flex", flexDirection: "column", gap: "10px" },
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    minHeight: "100px",
+  },
   filterBar: {
     display: "flex",
     justifyContent: "space-between",
@@ -205,7 +223,7 @@ const styles = {
     backgroundColor: "#fff",
     border: "1px solid #e2e8f0",
     borderRadius: "8px",
-    transition: "transform 0.1s",
+    transition: "all 0.2s ease",
   },
   header: {
     display: "flex",
@@ -262,15 +280,6 @@ const styles = {
     color: "#94a3b8",
     marginTop: "5px",
     fontStyle: "italic",
-  },
-  spinner: {
-    width: "24px",
-    height: "24px",
-    border: "3px solid #f3f3f3",
-    borderTop: "3px solid #198104",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite",
-    margin: "0 auto",
   },
 };
 

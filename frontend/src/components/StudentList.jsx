@@ -131,8 +131,8 @@ const StudentList = () => {
         (s) =>
           !lowerSearch ||
           [s.full_name, s.index_number, s.uin].some((f) =>
-            f?.toLowerCase().includes(lowerSearch)
-          )
+            f?.toLowerCase().includes(lowerSearch),
+          ),
       )
       .reduce((acc, s) => {
         const r = s.region || "Unassigned Region";
@@ -305,7 +305,7 @@ const StudentList = () => {
                                                 onClick={() =>
                                                   triggerConfirm(
                                                     s.id,
-                                                    "clear_device"
+                                                    "clear_device",
                                                   )
                                                 }
                                                 title="Reset Device Lock"
@@ -332,7 +332,7 @@ const StudentList = () => {
                                                 onClick={() =>
                                                   triggerConfirm(
                                                     s.id,
-                                                    "toggle_status"
+                                                    "toggle_status",
                                                   )
                                                 }
                                                 title={
@@ -392,7 +392,7 @@ const StudentList = () => {
                                 </tbody>
                               </table>
                             </div>
-                          )
+                          ),
                         )}
                     </div>
                   );
@@ -585,4 +585,4 @@ const styles = {
   },
 };
 
-export default StudentList;
+export default React.memo(StudentList);

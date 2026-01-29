@@ -65,13 +65,13 @@ const CommunityList = () => {
       // Refresh local data to reflect changes
       setData((prev) =>
         prev.map((c) =>
-          c.id === updatedData.id ? { ...c, ...updatedData } : c
-        )
+          c.id === updatedData.id ? { ...c, ...updatedData } : c,
+        ),
       );
       setEditModal({ isOpen: false, data: null, isLoading: false });
     } catch (err) {
       alert(
-        "Update failed: " + (err.response?.data?.message || "Server Error")
+        "Update failed: " + (err.response?.data?.message || "Server Error"),
       );
       setEditModal((prev) => ({ ...prev, isLoading: false }));
     }
@@ -96,8 +96,8 @@ const CommunityList = () => {
       // Optimistic Update
       setData((prev) =>
         prev.map((c) =>
-          c.region === regionName ? { ...c, coordinate_check: targetState } : c
-        )
+          c.region === regionName ? { ...c, coordinate_check: targetState } : c,
+        ),
       );
 
       await axios.post("/admin/manage_community", {
@@ -115,8 +115,8 @@ const CommunityList = () => {
       if (actionType.startsWith("toggle")) {
         setData((prev) =>
           prev.map((c) =>
-            c.id === id ? { ...c, coordinate_check: !c.coordinate_check } : c
-          )
+            c.id === id ? { ...c, coordinate_check: !c.coordinate_check } : c,
+          ),
         );
       }
 
@@ -155,7 +155,7 @@ const CommunityList = () => {
       (c) =>
         c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.district?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.region?.toLowerCase().includes(searchTerm.toLowerCase())
+        c.region?.toLowerCase().includes(searchTerm.toLowerCase()),
     );
     return filtered.reduce((acc, curr) => {
       const region = curr.region || "Unassigned";
@@ -265,7 +265,7 @@ const CommunityList = () => {
                               >
                                 {c.latitude
                                   ? `${parseFloat(c.latitude).toFixed(
-                                      4
+                                      4,
                                     )}, ${parseFloat(c.longitude).toFixed(4)}`
                                   : "No GPS"}
                               </span>
@@ -456,4 +456,4 @@ const styles = {
   },
 };
 
-export default CommunityList;
+export default React.memo(CommunityList);

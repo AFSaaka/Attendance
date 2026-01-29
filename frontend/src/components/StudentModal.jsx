@@ -308,7 +308,7 @@ const styles = {
   },
   modal: {
     background: "#fff",
-    borderRadius: "20px",
+    borderRadius: "1px",
     width: "100%",
     maxWidth: "480px",
     boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
