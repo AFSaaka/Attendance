@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, CheckCircle, Loader2, WifiOff } from "lucide-react";
 
 const AttendanceModal = ({
@@ -9,8 +9,9 @@ const AttendanceModal = ({
   isSubmitting,
 }) => {
   const [isSuccess, setIsSuccess] = useState(false);
+  const scrollRef = useRef(null); // Ref for auto-scrolling
 
-  // Reset success state when the modal is closed so it's fresh for the next time
+  // Reset success state
   useEffect(() => {
     if (!isOpen) {
       const timer = setTimeout(() => setIsSuccess(false), 300);
@@ -18,23 +19,34 @@ const AttendanceModal = ({
     }
   }, [isOpen]);
 
+  // Handle Success Auto-close
   useEffect(() => {
     let timer;
     if (isSuccess) {
-      // Start a 5-second countdown to close the modal
       timer = setTimeout(() => {
         onClose();
       }, 5000);
     }
-
-    // Cleanup function: if the user manually closes the modal
-    // before the 3 seconds are up, we cancel the timer to prevent memory leaks.
     return () => clearTimeout(timer);
   }, [isSuccess, onClose]);
 
+  // --- Task: Auto-scroll to active day on mobile ---
+  useEffect(() => {
+    if (isOpen && scrollRef.current) {
+      const activeElement =
+        scrollRef.current.querySelector(`[data-active="true"]`);
+      if (activeElement) {
+        activeElement.scrollIntoView({
+          behavior: "smooth",
+          inline: "center",
+          block: "nearest",
+        });
+      }
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  // --- Logic Helpers ---
   const calculateProgress = () => {
     if (!placement?.start_date) return { week: 1, day: 1 };
     const [year, month, day] = placement.start_date.split("-").map(Number);
@@ -66,7 +78,7 @@ const AttendanceModal = ({
   };
 
   const handleInternalSubmit = async () => {
-    const success = await onSubmit(); // Ensure your parent function returns true on success
+    const success = await onSubmit();
     if (success) {
       setIsSuccess(true);
     }
@@ -130,10 +142,13 @@ const AttendanceModal = ({
                       {placement?.index_number || "N/A"}
                     </div>
                   </div>
-                  <div style={styles.daysContainer}>
+
+                  {/* MODIFIED: Scrollable Container */}
+                  <div style={styles.daysContainer} ref={scrollRef}>
                     {days.map((d) => (
                       <div
                         key={d}
+                        data-active={d === activeDay}
                         style={{
                           ...styles.dayBox,
                           backgroundColor:
@@ -223,14 +238,12 @@ const AttendanceModal = ({
                 Your attendance for Week {week}, Day {activeDay} has been
                 recorded.
               </p>
-
               {!navigator.onLine && (
                 <div style={styles.offlineWarning}>
                   <WifiOff size={16} />
                   <span>Offline Mode: Saved locally for sync.</span>
                 </div>
               )}
-
               <button
                 onClick={onClose}
                 style={{
@@ -251,7 +264,6 @@ const AttendanceModal = ({
 };
 
 const styles = {
-  // ... (Your existing styles) ...
   overlay: {
     position: "fixed",
     top: 0,
@@ -354,13 +366,20 @@ const styles = {
   },
   nameTag: { fontSize: "14px", fontWeight: "700", color: "#1e293b" },
   indexTag: { fontSize: "11px", color: "#64748b", marginTop: "2px" },
+
+  // UPDATED: Flex container with scroll
   daysContainer: {
     flex: 3,
-    display: "grid",
-    gridTemplateColumns: "repeat(7, 1fr)",
+    display: "flex",
+    overflowX: "auto",
     padding: "8px",
-    gap: "6px",
+    gap: "8px",
+    scrollSnapType: "x mandatory", // Makes it feel high-quality
+    msOverflowStyle: "none" /* IE and Edge */,
+    scrollbarWidth: "none" /* Firefox */,
   },
+
+  // UPDATED: Prevent shrinking
   dayBox: {
     position: "relative",
     display: "flex",
@@ -369,6 +388,9 @@ const styles = {
     justifyContent: "center",
     borderRadius: "8px",
     height: "55px",
+    minWidth: "48px", // Ensures it stays readable
+    flexShrink: 0, // CRITICAL: prevents smudging
+    scrollSnapAlign: "center",
   },
   activeIndicator: {
     position: "absolute",
@@ -399,8 +421,6 @@ const styles = {
     fontSize: "16px",
     cursor: "pointer",
   },
-
-  // New Styles
   successWrapper: {
     display: "flex",
     flexDirection: "column",

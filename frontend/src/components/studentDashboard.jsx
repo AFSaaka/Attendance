@@ -368,14 +368,14 @@ const StudentDashboard = ({
                     <div>
                       <small style={styles.miniLabel}>LAT</small>
                       <br />
-                      <strong>
+                      <strong style={styles.coordLabel1}>
                         {location.lat?.toFixed(6) || "Searching..."}
                       </strong>
                     </div>
                     <div style={styles.coordDivider}>
                       <small style={styles.miniLabel}>LNG</small>
                       <br />
-                      <strong>
+                      <strong style={styles.coordLabel1}>
                         {location.lng?.toFixed(6) || "Searching..."}
                       </strong>
                     </div>
@@ -393,14 +393,14 @@ const StudentDashboard = ({
                     <div>
                       <small style={styles.miniLabel}>TARGET LAT</small>
                       <br />
-                      <code>
+                      <code style={styles.coordLabel2}>
                         {parseFloat(placement?.community_lat || 0).toFixed(6)}
                       </code>
                     </div>
                     <div style={styles.coordDivider}>
                       <small style={styles.miniLabel}>TARGET LNG</small>
                       <br />
-                      <code>
+                      <code style={styles.coordLabel2}>
                         {parseFloat(placement?.community_lng || 0).toFixed(6)}
                       </code>
                     </div>
@@ -552,6 +552,14 @@ const styles = {
     color: "#64748b",
     fontWeight: "bold",
     letterSpacing: "0.5px",
+  },
+  coordLabel1: {
+    color: "#030303",
+    fontWeight: "bold",
+  },
+  coordLabel2: {
+    color: "#64748b",
+    fontWeight: "bold",
   },
   // Ensure coordBox has a transition for a smooth feel
   coordBox: {
