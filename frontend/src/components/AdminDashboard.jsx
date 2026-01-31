@@ -186,7 +186,9 @@ const AdminDashboard = ({ user, onLogout, onOpenModal, onOpenExport }) => {
     if (p.includes("/sessions")) return "sessions";
     return "overview";
   };
-
+  useEffect(() => {
+    document.title = "TTFPP | Admin Dashboard";
+  }, []);
   const activeTab = getActiveTab();
 
   return (

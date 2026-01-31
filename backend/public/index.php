@@ -31,43 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// --- NEW: DATABASE CONNECTION TEST ROUTE ---
-if (isset($_GET['test_db'])) {
-    $dbUrl = getenv('DATABASE_URL');
-    try {
-        if (!$dbUrl) throw new Exception("DATABASE_URL not found.");
-
-        // Parse the URL into its components
-        $parsedUrl = parse_url($dbUrl);
-        
-        $host = $parsedUrl['host'];
-        $port = $parsedUrl['port'] ?? 5432;
-        $user = $parsedUrl['user'];
-        $pass = $parsedUrl['pass'];
-        $dbname = ltrim($parsedUrl['path'], '/');
-
-        // Construct the DSN in the format PHP PDO requires
-        $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=require";
-        
-        // Pass user and password as separate arguments to the PDO constructor
-        $pdo = new PDO($dsn, $user, $pass);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
-        $stmt = $pdo->query("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'");
-        $count = $stmt->fetchColumn();
-
-        echo json_encode([
-            "status" => "success",
-            "message" => "Connection Refined & Successful!",
-            "tables_found" => $count
-        ]);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => "DNS/Format Error: " . $e->getMessage()]);
-    }
-    exit;
-}
-// --- END TEST ROUTE ---
 
 // 2. Extract the URL
 $url = isset($_GET['url']) ? rtrim($_GET['url'], '/') : '';

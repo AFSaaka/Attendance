@@ -41,9 +41,15 @@ function App() {
   const navigate = useNavigate();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
+  // --- Dynamic Page Titles ---
   useEffect(() => {
-    document.title = "TTFPP | Login";
-  }, []);
+    const titles = {
+      login: "TTFPP | Login",
+      signup: "TTFPP | Registration",
+      verify: "TTFPP | Verification",
+    };
+    document.title = titles[view] || "TTFPP | Portal";
+  }, [view]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("uds_user");
@@ -376,7 +382,13 @@ function App() {
                             : "Create Account"}
                       </PrimaryButton>
 
-                      <p style={{ marginTop: "20px", fontSize: "13px" }}>
+                      <p
+                        style={{
+                          marginTop: "20px",
+                          fontSize: "13px",
+                          color: "#2e2e2e",
+                        }}
+                      >
                         {view === "login"
                           ? "New student? "
                           : "Already registered? "}
