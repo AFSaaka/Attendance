@@ -7,33 +7,64 @@ require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../config/db.php'; 
 
 /**
- * Internal helper to configure PHPMailer with SMTP settings.
- * Centralizing this ensures that changes to credentials only happen in one place.
+ * Helper to fetch variables from System (Render) or .env (Local)
  */
+function getSetting($key, $envArray) {
+    // 1. Try System Environment (Render)
+    $systemVal = getenv($key);
+    if ($systemVal !== false) return $systemVal;
+
+    // 2. Try the loaded .env array (Local)
+    return $envArray[$key] ?? null;
+}
+
 function getMailerInstance()
 {
-    $env = loadEnv();
+    // Load local .env only if loadEnv exists and we aren't on Render
+    $env = function_exists('loadEnv') ? loadEnv() : [];
+    
     $mail = new PHPMailer(true);
 
-    // SMTP Server Settings
+    // --- SMTP Server Settings ---
     $mail->isSMTP();
-    $mail->Host       = $env['SMTP_HOST'];
+    $mail->Host       = getSetting('SMTP_HOST', $env);
     $mail->SMTPAuth   = true;
-    $mail->Username   = $env['SMTP_USER'];
-    $mail->Password   = $env['SMTP_PASS'];
-    $mail->Port       = $env['SMTP_PORT'];
+    $mail->Username   = getSetting('SMTP_USER', $env);
+    $mail->Password   = getSetting('SMTP_PASS', $env);
+    $mail->Port       = getSetting('SMTP_PORT', $env);
     $mail->CharSet    = 'UTF-8';
 
-    // Security logic: SMTPS (465) vs STARTTLS (587)
-    $mail->SMTPSecure = ($env['SMTP_PORT'] == 465) 
+    $mail->Timeout    = 30; 
+    
+    // Auto-disable Debugging on Render to keep logs clean
+    $mail->SMTPDebug = getenv('RENDER') ? 0 : 2; 
+    $mail->Debugoutput = function($str, $level) { error_log("SMTP: $str"); };
+
+    // Security logic
+    $port = getSetting('SMTP_PORT', $env);
+    $mail->SMTPSecure = ($port == 465) 
         ? PHPMailer::ENCRYPTION_SMTPS 
         : PHPMailer::ENCRYPTION_STARTTLS;
 
-    $mail->Timeout = 10;
-    $mail->setFrom($env['SMTP_FROM'] ?? 'no-reply@uds.edu.gh', 'UDS TTFPP Portal');
+    // SSL Fix: ONLY apply the "verify_peer => false" fix locally.
+    // Cloud servers (Render) have proper CA certs, so we don't disable security there.
+    if (!getenv('RENDER')) {
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
+    }
+
+    $fromEmail = getSetting('SMTP_FROM', $env) ?? 'no-reply@uds.edu.gh';
+    $mail->setFrom($fromEmail, 'UDS TTFPP Portal');
 
     return $mail;
 }
+
+
 
 function sendOTPEmail($recipientEmail, $otpCode)
 {

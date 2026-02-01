@@ -24,24 +24,78 @@ const AuthGuard = ({ children, user, allowedRole }) => {
   return children;
 };
 
+const ProcessingOverlay = ({ message }) => (
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      backgroundColor: "rgba(255, 255, 255, 0.9)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      backdropFilter: "blur(4px)",
+    }}
+  >
+    <div
+      className="spinner"
+      style={{
+        border: "4px solid #f3f3f3",
+        borderTop: "4px solid #198104",
+        borderRight: "4px solid #FFD700",
+        borderRadius: "50%",
+        width: "40px",
+        height: "40px",
+        animation: "spin 1s linear infinite",
+      }}
+    />
+    <p style={{ marginTop: "15px", fontWeight: "bold", color: "#333" }}>
+      {message}
+    </p>
+    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+  </div>
+);
+
 function App() {
   const [view, setView] = useState("login");
   const { location, resetLocation, refreshGPS } = useGeolocation();
   const [isLocked, setIsLocked] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState(null);
 
-  // Initialize user directly from localStorage to prevent the "Auth Flicker"
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem("uds_user");
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Start as true if we have a saved user to prevent "Dashboard Leak"
   const [isCheckingAuth, setIsCheckingAuth] = useState(!!user);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // --- Dynamic Page Titles ---
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    uin: "",
+    indexNumber: "",
+    confirmPassword: "",
+  });
+  const [message, setMessage] = useState({ type: "", text: "" });
+
+  // --- NEW: SIGNUP VALIDATION LOGIC ---
+  const isSignupValid = useMemo(() => {
+    return (
+      formData.uin?.trim() !== "" &&
+      formData.indexNumber?.trim() !== "" &&
+      formData.email?.trim() !== "" &&
+      formData.password?.length >= 6 &&
+      formData.password === formData.confirmPassword
+    );
+  }, [formData]);
+
   useEffect(() => {
     const titles = {
       login: "TTFPP | Login",
@@ -58,25 +112,16 @@ function App() {
     resetLocation();
     navigate("/", { replace: true });
   }, [navigate, resetLocation]);
+
   useEffect(() => {
     let isMounted = true;
-
     const verifySession = async () => {
-      // If no user, we aren't checking anything
-      if (!user) {
+      if (!user || isOffline) {
         setIsCheckingAuth(false);
         return;
       }
-
-      // If offline, we trust the local session (your specific requirement)
-      if (isOffline) {
-        setIsCheckingAuth(false);
-        return;
-      }
-
       try {
         await axios.get("auth/verify");
-        // If successful, we stay logged in
       } catch (error) {
         const status = error.response?.status;
         if (status === 401 || status === 403) {
@@ -86,12 +131,12 @@ function App() {
         if (isMounted) setIsCheckingAuth(false);
       }
     };
-
     verifySession();
     return () => {
       isMounted = false;
     };
-  }, [isOffline, user, handleLogout]); // Re-verify if we come back online
+  }, [isOffline, user, handleLogout]);
+
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -103,16 +148,6 @@ function App() {
     };
   }, []);
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    uin: "",
-    indexNumber: "",
-    confirmPassword: "",
-  });
-  const [message, setMessage] = useState({ type: "", text: "" });
-
-  // --- Message Timer ---
   useEffect(() => {
     if (message.text) {
       const timer = setTimeout(() => {
@@ -130,11 +165,36 @@ function App() {
   const getDeviceId = () => {
     let deviceId = localStorage.getItem("student_device_id");
     if (!deviceId) {
-      // Generate a simple unique ID (Timestamp + Random string)
       deviceId = "dev_" + Math.random().toString(36).substr(2, 9) + Date.now();
       localStorage.setItem("student_device_id", deviceId);
     }
     return deviceId;
+  };
+
+  const handleResendOtp = async () => {
+    if (!formData.email) {
+      setMessage({
+        type: "error",
+        text: "Email is missing. Please restart registration.",
+      });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await axios.post("auth/resend_otp", {
+        email: formData.email,
+      });
+      if (response.data.status === "success") {
+        setMessage({ type: "success", text: response.data.message });
+      }
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Failed to resend code.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -153,104 +213,112 @@ function App() {
         }
       }
     };
-
-    checkLock(); // Check immediately
-    const interval = setInterval(checkLock, 10000); // Re-check every 10 seconds
+    checkLock();
+    const interval = setInterval(checkLock, 10000);
     return () => clearInterval(interval);
   }, []);
+
   const handleAction = async () => {
+    if (view === "signup") {
+      if (!formData.password || !formData.confirmPassword) {
+        setMessage({
+          type: "error",
+          text: "Please fill in all password fields.",
+        });
+        return;
+      }
+      if (formData.password !== formData.confirmPassword) {
+        setMessage({ type: "error", text: "Passwords do not match!" });
+        return;
+      }
+      if (formData.password.length < 6) {
+        setMessage({
+          type: "error",
+          text: "Password must be at least 6 characters.",
+        });
+        return;
+      }
+    }
+
+    setProcessingMessage(
+      view === "login" ? "Signing in..." : "Creating your account...",
+    );
     setIsLoading(true);
     setMessage({ type: "", text: "" });
+    const startTime = Date.now();
 
     try {
       const endpoint = view === "login" ? "auth/login" : "auth/register";
-      const payload = {
-        ...formData,
-        device_id: getDeviceId(), // Injected from our new helper
-      };
+      const payload = { ...formData, device_id: getDeviceId() };
 
       const response = await axios.post(endpoint, payload);
 
-      if (response.data.status === "success") {
-        if (view === "login") {
-          localStorage.removeItem("uds_login_lock");
-          const userData = response.data.user;
-          setUser(userData);
-          localStorage.setItem("uds_user", JSON.stringify(userData));
+      const duration = Date.now() - startTime;
+      const waitTime = Math.max(0, 3000 - duration);
 
-          if (userData.must_reset_password) {
-            navigate("/reset-password");
+      setTimeout(() => {
+        setProcessingMessage(null);
+        setIsLoading(false);
+
+        if (response.data.status === "success") {
+          if (view === "login") {
+            localStorage.removeItem("uds_login_lock");
+            const userData = response.data.user;
+            setUser(userData);
+            localStorage.setItem("uds_user", JSON.stringify(userData));
+            if (userData.must_reset_password) navigate("/reset-password");
+          } else {
+            setMessage({ type: "success", text: response.data.message });
+            setView("verify");
           }
-        } else {
-          setMessage({ type: "success", text: response.data.message });
-          setTimeout(() => setView("verify"), 1000);
         }
-      }
+      }, waitTime);
     } catch (error) {
-      console.error("Login Error:", error.response);
+      setProcessingMessage(null);
+      setIsLoading(false);
       const status = error.response?.status;
       const data = error.response?.data;
 
-      // 1. OFFLINE FALLBACK
-      if (!navigator.onLine && view === "login") {
-        const savedUser = JSON.parse(localStorage.getItem("uds_user"));
-        if (savedUser && savedUser.email === formData.email) {
-          setUser(savedUser);
-          setMessage({ type: "success", text: "Offline login successful." });
-          return;
-        }
-      }
-
-      // 2. RATE LIMITING (429 - 5+ attempts)
-      if (status === 429) {
-        // Calculate the time 15 minutes from now
-        const lockUntil = Date.now() + 15 * 60 * 1000;
-        localStorage.setItem("uds_login_lock", lockUntil.toString());
-
-        setIsLocked(true);
-        setMessage({
-          type: "error",
-          text: "🔒 Too many attempts. Button disabled for 15 minutes.",
-        });
-        return;
-      }
-
-      // 3. EMAIL VERIFICATION (403 + flag)
-      if (status === 403 && data?.requires_verification) {
+      if (
+        (data?.message?.includes("already claimed") || status === 403) &&
+        data?.requires_verification
+      ) {
         setMessage({ type: "error", text: data.message });
-        setFormData((prev) => ({ ...prev, email: data.email || prev.email }));
-        setTimeout(() => setView("verify"), 2000);
-        return;
+        setView("verify");
+      } else {
+        setMessage({ type: "error", text: data?.message || "Action failed." });
       }
-
-      // 4. DEVICE LOCK / ACCESS DENIED (General 403)
-      if (status === 403) {
-        setMessage({
-          type: "error",
-          text: `🚫 Access Denied: ${data?.message || "Device not recognized."}`,
-        });
-        return;
-      }
-
-      // 5. GENERAL ERRORS (401, 500, etc.)
-      setMessage({ type: "error", text: data?.message || "Action failed." });
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleVerifyOtp = async (otpCode) => {
     setIsLoading(true);
+    setProcessingMessage("Verifying code..."); // This triggers the overlay
     try {
       const response = await axios.post("auth/verify_otp", {
         email: formData.email,
         otp: otpCode,
       });
-      return response.data.status === "success";
+
+      // Artificial delay to ensure user sees the "Verifying" state
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      if (response.data.status === "success") {
+        setFormData({
+          email: "",
+          password: "",
+          uin: "",
+          indexNumber: "",
+          confirmPassword: "",
+        });
+        return true;
+      }
+      return false;
     } catch (error) {
       return false;
     } finally {
       setIsLoading(false);
+      setProcessingMessage(null); // This hides the overlay
     }
   };
 
@@ -258,6 +326,7 @@ function App() {
 
   return (
     <div style={styles.wrapperStyle}>
+      {processingMessage && <ProcessingOverlay message={processingMessage} />}
       {isOffline && (
         <div style={styles.offlineBanner}>
           You are currently offline. Using saved session.
@@ -302,7 +371,7 @@ function App() {
                       email={formData.email}
                       onVerify={handleVerifyOtp}
                       isLoading={isLoading}
-                      onResend={() => {}}
+                      onResend={handleResendOtp}
                       onContinue={() => {
                         setMessage({
                           type: "success",
@@ -362,6 +431,20 @@ function App() {
                             value={formData.confirmPassword}
                             onChange={handleChange}
                           />
+                          {/* Matching feedback */}
+                          {formData.confirmPassword &&
+                            formData.password !== formData.confirmPassword && (
+                              <p
+                                style={{
+                                  color: "#cf1322",
+                                  fontSize: "11px",
+                                  textAlign: "left",
+                                  margin: "-10px 0 10px 5px",
+                                }}
+                              >
+                                * Passwords do not match
+                              </p>
+                            )}
                         </>
                       )}
 
@@ -369,10 +452,10 @@ function App() {
                         type="submit"
                         isLoading={isLoading}
                         disabled={
-                          isLocked || // New check
+                          isLocked ||
                           (view === "login"
                             ? !(formData.email && formData.password)
-                            : false)
+                            : !isSignupValid)
                         }
                       >
                         {isLocked
@@ -407,7 +490,6 @@ function App() {
               )
             }
           />
-
           <Route
             path="/reset-password"
             element={
@@ -422,9 +504,6 @@ function App() {
             path="/admin/*"
             element={
               <AuthGuard user={user} allowedRole="admin">
-                {/* IMPORTANT: AdminShell is the one that contains the 
-                   modals and state-based visibility.
-                */}
                 <AdminShell user={user} onLogout={handleLogout} />
               </AuthGuard>
             }
