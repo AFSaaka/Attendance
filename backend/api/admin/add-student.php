@@ -4,6 +4,8 @@ require_once __DIR__ . '/../common_auth.php';
 
 requireAdmin();
 
+header('Content-Type: application/json');
+
 $data = json_decode(file_get_contents("php://input"), true);
 $admin_id = $currentUser['id'];
 
@@ -15,27 +17,35 @@ if (empty($data['uin']) || empty($data['index_number']) || empty($data['full_nam
 try {
     $pdo->beginTransaction();
 
-    // 1. SESSION LOGGING
-    $session_id = $pdo->query("SELECT id FROM public.academic_sessions WHERE is_current = true LIMIT 1")->fetchColumn();
+    // 1. SESSION RESOLUTION
+    $session_id = $pdo->query("
+        SELECT id FROM public.academic_sessions 
+        WHERE is_current = true 
+        LIMIT 1
+    ")->fetchColumn();
+
     if (!$session_id) {
-        $session_id = $pdo->query("SELECT id FROM public.academic_sessions ORDER BY year_end DESC LIMIT 1")->fetchColumn();
-    }
-    
-    if (!$session_id) {
-        throw new Exception("No active academic session found.");
+        $session_id = $pdo->query("
+            SELECT id FROM public.academic_sessions 
+            ORDER BY year_end DESC 
+            LIMIT 1
+        ")->fetchColumn();
     }
 
-    // 2. CREATE A SAVEPOINT
-    // This protects the transaction from being "poisoned" if the next query fails
+    if (!$session_id) {
+        throw new Exception("No academic session found.");
+    }
+
+    // 2. SAVEPOINT
     $pdo->exec("SAVEPOINT single_add_start");
 
     try {
-        // 3. TABLE 1: REGISTRY UPSERT
+        // 3. REGISTRY UPSERT (conflict-tolerant)
         $stmt = $pdo->prepare("
-            INSERT INTO public.student_registry 
+            INSERT INTO public.student_registry
             (uin, index_number, full_name, program, region, district, community, is_deleted, updated_at)
             VALUES (:uin, :idx, :name, :prog, :reg, :dist, :comm, false, NOW())
-            ON CONFLICT (index_number) DO UPDATE SET 
+            ON CONFLICT (index_number) DO UPDATE SET
                 full_name = EXCLUDED.full_name,
                 uin = EXCLUDED.uin,
                 program = EXCLUDED.program,
@@ -46,39 +56,55 @@ try {
                 updated_at = NOW()
             RETURNING id
         ");
-        
-        $stmt->execute([
-            'uin'   => trim($data['uin']),
-            'idx'   => trim($data['index_number']),
-            'name'  => trim($data['full_name']),
-            'prog'  => $data['program']   ?? null,
-            'reg'   => $data['region']    ?? null,
-            'dist'  => $data['district']  ?? null,
-            'comm'  => $data['community'] ?? null
-        ]);
 
-        $registry_id = $stmt->fetchColumn();
+        try {
+            $stmt->execute([
+                'uin'  => trim($data['uin']),
+                'idx'  => trim($data['index_number']),
+                'name' => trim($data['full_name']),
+                'prog' => $data['program']   ?? null,
+                'reg'  => $data['region']    ?? null,
+                'dist' => $data['district']  ?? null,
+                'comm' => $data['community'] ?? null
+            ]);
 
-        // FALLBACK: If RETURNING id is null (common on Production/Neon for no-op updates)
-        if (!$registry_id) {
-            $fetchStmt = $pdo->prepare("SELECT id FROM public.student_registry WHERE index_number = ?");
-            $fetchStmt->execute([trim($data['index_number'])]);
-            $registry_id = $fetchStmt->fetchColumn();
+            $registry_id = $stmt->fetchColumn();
+
+        } catch (PDOException $e) {
+            // tolerate UIN conflict like bulk upload
+            if ($e->getCode() !== '23505') {
+                throw $e;
+            }
+        }
+
+        // Always resolve registry_id safely
+        if (empty($registry_id)) {
+            $fetch = $pdo->prepare("
+                SELECT id FROM public.student_registry
+                WHERE uin = ? OR index_number = ?
+                LIMIT 1
+            ");
+            $fetch->execute([
+                trim($data['uin']),
+                trim($data['index_number'])
+            ]);
+            $registry_id = $fetch->fetchColumn();
         }
 
         if (!$registry_id) {
             throw new Exception("Could not resolve Registry ID.");
         }
 
-        // 4. TABLE 2: ENROLLMENT UPSERT
+        // 4. ENROLLMENT UPSERT
         $stmtEnr = $pdo->prepare("
-            INSERT INTO public.student_enrollments 
+            INSERT INTO public.student_enrollments
             (registry_id, session_id, level, program, region, district, community, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-            ON CONFLICT (registry_id, session_id) DO UPDATE SET 
+            ON CONFLICT (registry_id, session_id) DO UPDATE SET
                 level = EXCLUDED.level,
                 updated_at = NOW()
         ");
+
         $stmtEnr->execute([
             $registry_id,
             $session_id,
@@ -89,42 +115,45 @@ try {
             $data['community'] ?? null
         ]);
 
-        // Release the savepoint if everything worked
         $pdo->exec("RELEASE SAVEPOINT single_add_start");
 
-    } catch (Exception $innerError) {
-        // Rollback to the savepoint so the transaction remains "alive" for auditing/error reporting
+    } catch (Exception $inner) {
         $pdo->exec("ROLLBACK TO SAVEPOINT single_add_start");
-        throw $innerError; // Re-throw to be caught by main catch block
+        throw $inner;
     }
 
-    // 5. AUDIT LOGGING (This now works because the transaction isn't poisoned)
+    // 5. AUDIT LOG
     $logStmt = $pdo->prepare("
-        INSERT INTO public.audit_logs 
-        (user_id, action_type, session_id, target_id, ip_address, details) 
+        INSERT INTO public.audit_logs
+        (user_id, action_type, session_id, target_id, ip_address, details)
         VALUES (?, 'MANUAL_ADD_STUDENT', ?, ?, ?, ?)
     ");
     $logStmt->execute([
-        $admin_id, 
-        $session_id, 
-        $registry_id, 
+        $admin_id,
+        $session_id,
+        $registry_id,
         $_SERVER['REMOTE_ADDR'],
-        json_encode(["uin" => $data['uin'], "index" => $data['index_number']])
+        json_encode([
+            "uin"   => $data['uin'],
+            "index" => $data['index_number']
+        ])
     ]);
 
     $pdo->commit();
-    echo json_encode(["status" => "success", "message" => "Student record processed successfully"]);
 
-} catch (PDOException $e) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
-    if ($e->getCode() == '23505') {
-        http_response_code(409);
-        exit(json_encode(["status" => "error", "message" => "Duplicate Conflict: UIN/Index already exists."]));
-    }
-    http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "DB Error: " . $e->getMessage()]);
+    echo json_encode([
+        "status"  => "success",
+        "message" => "Student record processed successfully"
+    ]);
+
 } catch (Exception $e) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log("ADD STUDENT ERROR: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    echo json_encode([
+        "status"  => "error",
+        "message" => "Failed to process student record"
+    ]);
 }
