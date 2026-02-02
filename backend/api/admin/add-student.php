@@ -152,8 +152,10 @@ try {
     }
     error_log("ADD STUDENT ERROR: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode([
-        "status"  => "error",
-        "message" => "Failed to process student record"
-    ]);
+$errorMsg = $e instanceof PDOException ? $e->getMessage() : $e->getMessage();
+error_log("ADD STUDENT ERROR: " . $errorMsg);
+echo json_encode([
+    "status"  => "error",
+    "message" => $errorMsg
+]);
 }
