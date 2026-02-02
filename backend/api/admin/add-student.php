@@ -9,10 +9,8 @@ $admin_id = $currentUser['id'];
 
 // 1. LOG THE INCOMING DATA
 error_log("DEBUG: Received Manual Add Request for: " . ($data['full_name'] ?? 'Unknown'));
-error_log("DEBUG: Full Payload: " . json_encode($data));
 
 if (empty($data['uin']) || empty($data['index_number']) || empty($data['full_name'])) {
-    error_log("DEBUG: Validation Failed - Missing UIN, Index, or Name");
     http_response_code(400);
     exit(json_encode(["status" => "error", "message" => "Missing required fields"]));
 }
@@ -21,7 +19,6 @@ try {
     $pdo->beginTransaction();
 
     // 2. SESSION LOGGING
-    // Get the current active session or the most recent one
     $session_id = $pdo->query("SELECT id FROM public.academic_sessions WHERE is_current = true LIMIT 1")->fetchColumn();
     if (!$session_id) {
         $session_id = $pdo->query("SELECT id FROM public.academic_sessions ORDER BY year_end DESC LIMIT 1")->fetchColumn();
@@ -30,11 +27,9 @@ try {
     if (!$session_id) {
         throw new Exception("No active academic session found. Please create a session first.");
     }
-    error_log("DEBUG: Target Session ID: " . $session_id);
 
     // 3. TABLE 1: REGISTRY UPSERT
-    // We conflict on index_number. If it exists, we update the name and UIN.
-    error_log("DEBUG: Attempting Table 1 (Registry) Upsert for UIN: " . $data['uin']);
+    // We conflict on index_number.
     $stmt = $pdo->prepare("
         INSERT INTO public.student_registry 
         (uin, index_number, full_name, program, region, district, community, is_deleted, updated_at)
@@ -60,12 +55,23 @@ try {
         'dist'  => $data['district']  ?? null,
         'comm'  => $data['community'] ?? null
     ]);
+
     $registry_id = $stmt->fetchColumn();
-    error_log("DEBUG: Table 1 Success. Registry ID: " . $registry_id);
+
+    // CRITICAL FIX FOR LIVE HOSTING:
+    // If Postgres doesn't return an ID (common when no data changed during an UPDATE), 
+    // we must fetch it manually to avoid poisoning the transaction in the next step.
+    if (!$registry_id) {
+        $fetchStmt = $pdo->prepare("SELECT id FROM public.student_registry WHERE index_number = ?");
+        $fetchStmt->execute([trim($data['index_number'])]);
+        $registry_id = $fetchStmt->fetchColumn();
+    }
+
+    if (!$registry_id) {
+        throw new Exception("Failed to secure a valid Student Registry ID.");
+    }
 
     // 4. TABLE 2: ENROLLMENT UPSERT
-    // Requires the UNIQUE(registry_id, session_id) constraint in Postgres
-    error_log("DEBUG: Attempting Table 2 (Enrollment) for Registry ID: " . $registry_id);
     $stmtEnr = $pdo->prepare("
         INSERT INTO public.student_enrollments 
         (registry_id, session_id, level, program, region, district, community, updated_at)
@@ -87,7 +93,6 @@ try {
         $data['district']  ?? null,
         $data['community'] ?? null
     ]);
-    error_log("DEBUG: Table 2 Success.");
 
     // 5. AUDIT LOGGING
     $logStmt = $pdo->prepare("
@@ -108,7 +113,6 @@ try {
     ]);
 
     $pdo->commit();
-    error_log("DEBUG: Transaction Fully Committed.");
     echo json_encode(["status" => "success", "message" => "Student record created/updated successfully"]);
 
 } catch (PDOException $e) {
