@@ -3,11 +3,10 @@
 require_once __DIR__ . '/../common_auth.php';
 
 requireAdmin();
-
 header('Content-Type: application/json');
 
 $data = json_decode(file_get_contents("php://input"), true);
-$admin_id = $currentUser['id'];
+$admin_id = $currentUser['id'] ?? null;
 
 if (empty($data['uin']) || empty($data['index_number']) || empty($data['full_name'])) {
     http_response_code(400);
@@ -33,15 +32,16 @@ try {
     }
 
     if (!$session_id) {
-        throw new Exception("No academic session found.");
+        throw new Exception("No active academic session found.");
     }
 
-    // 2. SAVEPOINT
-    $pdo->exec("SAVEPOINT single_add_start");
+    // 2. Treat single student as "one row" with its own savepoint
+    $spName = "single_student";
+    $pdo->exec("SAVEPOINT $spName");
 
     try {
-        // 3. REGISTRY UPSERT (conflict-tolerant)
-        $stmt = $pdo->prepare("
+        // 3. REGISTRY UPSERT
+        $stmtRegistry = $pdo->prepare("
             INSERT INTO public.student_registry
             (uin, index_number, full_name, program, region, district, community, is_deleted, updated_at)
             VALUES (:uin, :idx, :name, :prog, :reg, :dist, :comm, false, NOW())
@@ -58,7 +58,7 @@ try {
         ");
 
         try {
-            $stmt->execute([
+            $stmtRegistry->execute([
                 'uin'  => trim($data['uin']),
                 'idx'  => trim($data['index_number']),
                 'name' => trim($data['full_name']),
@@ -67,14 +67,10 @@ try {
                 'dist' => $data['district']  ?? null,
                 'comm' => $data['community'] ?? null
             ]);
-
-            $registry_id = $stmt->fetchColumn();
-
+            $registry_id = $stmtRegistry->fetchColumn();
         } catch (PDOException $e) {
-            // tolerate UIN conflict like bulk upload
-            if ($e->getCode() !== '23505') {
-                throw $e;
-            }
+            // tolerate conflict
+            if ($e->getCode() !== '23505') throw $e;
         }
 
         // Always resolve registry_id safely
@@ -96,7 +92,7 @@ try {
         }
 
         // 4. ENROLLMENT UPSERT
-        $stmtEnr = $pdo->prepare("
+        $stmtEnroll = $pdo->prepare("
             INSERT INTO public.student_enrollments
             (registry_id, session_id, level, program, region, district, community, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
@@ -104,8 +100,7 @@ try {
                 level = EXCLUDED.level,
                 updated_at = NOW()
         ");
-
-        $stmtEnr->execute([
+        $stmtEnroll->execute([
             $registry_id,
             $session_id,
             $data['level']     ?? '100',
@@ -115,14 +110,14 @@ try {
             $data['community'] ?? null
         ]);
 
-        $pdo->exec("RELEASE SAVEPOINT single_add_start");
+        $pdo->exec("RELEASE SAVEPOINT $spName");
 
     } catch (Exception $inner) {
-        $pdo->exec("ROLLBACK TO SAVEPOINT single_add_start");
+        $pdo->exec("ROLLBACK TO SAVEPOINT $spName");
         throw $inner;
     }
 
-    // 5. AUDIT LOG
+    // 5. AUDIT LOGGING
     $logStmt = $pdo->prepare("
         INSERT INTO public.audit_logs
         (user_id, action_type, session_id, target_id, ip_address, details)
@@ -147,15 +142,11 @@ try {
     ]);
 
 } catch (Exception $e) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
+    if ($pdo->inTransaction()) $pdo->rollBack();
     error_log("ADD STUDENT ERROR: " . $e->getMessage());
     http_response_code(500);
-$errorMsg = $e instanceof PDOException ? $e->getMessage() : $e->getMessage();
-error_log("ADD STUDENT ERROR: " . $errorMsg);
-echo json_encode([
-    "status"  => "error",
-    "message" => $errorMsg
-]);
+    echo json_encode([
+        "status"  => "error",
+        "message" => "Failed to process student record"
+    ]);
 }
