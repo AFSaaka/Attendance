@@ -1,5 +1,5 @@
 <?php
-// backend/api/auth/register.php
+// backend/api/auth/register.php - ATOMIC DEBUG VERSION
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db.php'; 
 require_once __DIR__ . '/../../utils/mailer.php';
@@ -8,75 +8,40 @@ $pdo = getDB();
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 $data = json_decode(file_get_contents('php://input'), true);
-$uin = trim($data['uin'] ?? '');
-$indexNumber = trim($data['indexNumber'] ?? '');
-$email = trim($data['email'] ?? '');
-$password = $data['password'] ?? '';
+$uin = trim($data['uin'] ?? 'DEBUG_UIN'); // Use test data if empty
+$email = trim($data['email'] ?? 'debug@test.com');
 
 try {
-    // --- 1. DATA PREP (OUTSIDE TRANSACTION) ---
-    if (empty($uin) || empty($indexNumber) || empty($email) || empty($password)) {
-        throw new Exception("All fields are required.");
-    }
+    // TEST 1: Outside Transaction
+    echo "Check 1: Registry Query... ";
+    $stmt = $pdo->prepare("SELECT id FROM public.student_registry LIMIT 1");
+    $stmt->execute();
+    echo "Success.\n";
 
-    // Pre-fetch everything needed
-    $stmt = $pdo->prepare("SELECT id FROM public.student_registry WHERE uin = ? AND index_number = ?");
-    $stmt->execute([$uin, $indexNumber]);
-    $regId = $stmt->fetchColumn();
-
-    if (!$regId) throw new Exception("Student not found in registry.");
-
-    $checkUser = $pdo->prepare("SELECT id, is_email_verified FROM public.users WHERE uin = ? OR email = ?");
-    $checkUser->execute([$uin, $email]);
-    $existingUser = $checkUser->fetch(PDO::FETCH_ASSOC);
-
-    if ($existingUser && $existingUser['is_email_verified']) {
-        http_response_code(403);
-        throw new Exception("Account already verified.");
-    }
-
-    $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour'));
-    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-
-    // --- 2. THE TRANSACTION (DB WRITES ONLY) ---
+    // TEST 2: Start Transaction
+    echo "Check 2: Begin Transaction... ";
     $pdo->beginTransaction();
+    echo "Success.\n";
 
-    if ($existingUser) {
-        $pdo->prepare("UPDATE public.users SET otp_code = ?, otp_expires_at = ?, password_hash = ?, email = ? WHERE id = ?")
-            ->execute([$otp, $expires_at, $hashedPassword, $email, $existingUser['id']]);
-    } else {
-        // We use RETURNING id and fetch it immediately
-        $insert = $pdo->prepare("
-            INSERT INTO public.users (email, password_hash, role, uin, student_id, is_active, is_email_verified, otp_code, otp_expires_at) 
-            VALUES (?, ?, 'student', ?, ?, TRUE, FALSE, ?, ?) 
-            RETURNING id
-        ");
-        $insert->execute([$email, $hashedPassword, $uin, $regId, $otp, $expires_at]);
-        $newId = $insert->fetchColumn();
+    // TEST 3: The Write (This is where it likely fails)
+    echo "Check 3: Simple Insert... ";
+    $sql = "INSERT INTO public.users (email, password_hash, role, uin, is_active) VALUES (?, 'hash', 'student', ?, TRUE) RETURNING id";
+    $insert = $pdo->prepare($sql);
+    $insert->execute([$email . time(), $uin . time()]);
+    $newId = $insert->fetchColumn();
+    echo "Success. New ID: $newId\n";
 
-        $pdo->prepare("INSERT INTO public.students (user_id, registry_id) VALUES (?, ?)")
-            ->execute([$newId, $regId]);
-        
-        $pdo->prepare("UPDATE public.student_registry SET is_claimed = TRUE WHERE id = ?")
-            ->execute([$regId]);
-    }
-
-    $pdo->commit(); 
-    // --- TRANSACTION CLOSED ---
-
-    // --- 3. POST-PROCESS (MAILER) ---
-    sendOTPEmail($email, $otp);
-    
-    echo json_encode(["status" => "success", "message" => "OTP sent to $email."]);
+    // TEST 4: Commit
+    echo "Check 4: Committing... ";
+    $pdo->commit();
+    echo "Success.\n";
 
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    
-    error_log("Registration Failure: " . $e->getMessage());
-    http_response_code(400);
-    // Returning the actual message will help us see if it's a constraint or connection issue
-    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    echo "\n!!! REAL ERROR DETECTED !!!\n";
+    echo "Message: " . $e->getMessage() . "\n";
+    echo "File: " . $e->getFile() . " on line " . $e->getLine() . "\n";
+    exit;
 }
