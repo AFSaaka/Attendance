@@ -76,6 +76,7 @@ $routes = [
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
     'auth/verify' => '../api/auth/verify.php',
+    'test-mail' => '../api/test-mail.php',
    
 ];
 
