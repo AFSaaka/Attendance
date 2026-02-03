@@ -19,7 +19,6 @@ function getSetting($key, $envArray) {
  */
 function getMailerInstance()
 {
-    // CACHE the environment to prevent repeated file reads during bulk operations
     static $env = null;
     if ($env === null) {
         $env = function_exists('loadEnv') ? loadEnv() : [];
@@ -27,31 +26,27 @@ function getMailerInstance()
     
     $mail = new PHPMailer(true);
 
-    // --- SMTP Server Settings ---
     $mail->isSMTP();
-    $mail->Host       = getSetting('SMTP_HOST', $env);
+    $mail->Host       = getSetting('SMTP_HOST', $env); // should be smtp.sendgrid.net
     $mail->SMTPAuth   = true;
-    $mail->Username   = getSetting('SMTP_USER', $env);
+    $mail->Username   = getSetting('SMTP_USER', $env); // should be 'apikey'
     $mail->Password   = getSetting('SMTP_PASS', $env);
     $mail->Port       = getSetting('SMTP_PORT', $env);
     $mail->CharSet    = 'UTF-8';
-    $mail->Timeout    = 20; // Seconds
+    $mail->Timeout    = 20; 
 
-    // Auto-disable Debugging on Render to keep logs clean
     $isRender = getenv('RENDER');
-    $mail->SMTPDebug = $isRender ? 0 : 0; 
     
-    if (!$isRender) {
-        $mail->Debugoutput = function($str, $level) { error_log("SMTP: $str"); };
+    // SECURITY FIX: SendGrid on Render prefers SMTPS on 465 or STARTTLS on 587
+    $port = (int)getSetting('SMTP_PORT', $env);
+    if ($port === 465) {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+    } else {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     }
 
-    // Security logic
-    $port = getSetting('SMTP_PORT', $env);
-    $mail->SMTPSecure = ($port == 465) 
-        ? PHPMailer::ENCRYPTION_SMTPS 
-        : PHPMailer::ENCRYPTION_STARTTLS;
-
-    // SSL Fix: ONLY apply the "verify_peer => false" fix locally.
+    // SSL Fix: Cloud servers like Render usually don't need this,
+    // but we keep it for local dev flexibility.
     if (!$isRender) {
         $mail->SMTPOptions = array(
             'ssl' => array(
