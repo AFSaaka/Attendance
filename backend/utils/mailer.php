@@ -4,24 +4,26 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../config/db.php'; 
 
 /**
  * Helper to fetch variables from System (Render) or .env (Local)
  */
 function getSetting($key, $envArray) {
-    // 1. Try System Environment (Render)
     $systemVal = getenv($key);
     if ($systemVal !== false) return $systemVal;
-
-    // 2. Try the loaded .env array (Local)
     return $envArray[$key] ?? null;
 }
 
+/**
+ * Creates a configured PHPMailer instance
+ */
 function getMailerInstance()
 {
-    // Load local .env only if loadEnv exists and we aren't on Render
-    $env = function_exists('loadEnv') ? loadEnv() : [];
+    // CACHE the environment to prevent repeated file reads during bulk operations
+    static $env = null;
+    if ($env === null) {
+        $env = function_exists('loadEnv') ? loadEnv() : [];
+    }
     
     $mail = new PHPMailer(true);
 
@@ -33,12 +35,15 @@ function getMailerInstance()
     $mail->Password   = getSetting('SMTP_PASS', $env);
     $mail->Port       = getSetting('SMTP_PORT', $env);
     $mail->CharSet    = 'UTF-8';
+    $mail->Timeout    = 20; // Seconds
 
-    $mail->Timeout    = 30; 
-    
     // Auto-disable Debugging on Render to keep logs clean
-    $mail->SMTPDebug = getenv('RENDER') ? 0 : 2; 
-    $mail->Debugoutput = function($str, $level) { error_log("SMTP: $str"); };
+    $isRender = getenv('RENDER');
+    $mail->SMTPDebug = $isRender ? 0 : 0; 
+    
+    if (!$isRender) {
+        $mail->Debugoutput = function($str, $level) { error_log("SMTP: $str"); };
+    }
 
     // Security logic
     $port = getSetting('SMTP_PORT', $env);
@@ -47,8 +52,7 @@ function getMailerInstance()
         : PHPMailer::ENCRYPTION_STARTTLS;
 
     // SSL Fix: ONLY apply the "verify_peer => false" fix locally.
-    // Cloud servers (Render) have proper CA certs, so we don't disable security there.
-    if (!getenv('RENDER')) {
+    if (!$isRender) {
         $mail->SMTPOptions = array(
             'ssl' => array(
                 'verify_peer' => false,
@@ -64,14 +68,14 @@ function getMailerInstance()
     return $mail;
 }
 
-
-
+/**
+ * Sends OTP to students for registration
+ */
 function sendOTPEmail($recipientEmail, $otpCode)
 {
     try {
         $mail = getMailerInstance();
         $mail->addAddress($recipientEmail);
-
         $mail->isHTML(true);
         $mail->Subject = 'UDS TTFPP - Account Verification Code';
         $mail->Body    = "
@@ -96,12 +100,14 @@ function sendOTPEmail($recipientEmail, $otpCode)
     }
 }
 
+/**
+ * Sends invitation to new admins
+ */
 function sendAdminInviteEmail($recipientEmail, $userName, $otpCode)
 {
     try {
         $mail = getMailerInstance();
         $mail->addAddress($recipientEmail, $userName);
-
         $mail->isHTML(true);
         $mail->Subject = 'UDS TTFPP - Administrative Access Invitation';
         $mail->Body    = "
