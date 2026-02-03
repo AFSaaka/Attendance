@@ -35,7 +35,7 @@ try {
     }
 
 } catch (Exception $e) {
-    echo "<h3 style='color: red;'>EXCEPTION CAUGHT:</h3>";
+    echo "<h3 style='color: red;'>EXCEPTION:</h3>";
     echo "<pre>" . $e->getMessage() . "</pre>";
     echo "<strong>PHPMailer ErrorInfo:</strong> " . ($mail->ErrorInfo ?? 'None');
 }
