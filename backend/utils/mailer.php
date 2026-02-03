@@ -61,6 +61,7 @@ function sendOTPEmail($recipientEmail, $otpCode) {
     $htmlContent = "
         <div style='font-family: sans-serif; max-width: 500px; border: 1px solid #ddd; padding: 20px; border-radius: 10px;'>
             <h2 style='color: #198104; text-align: center;'>Account Verification</h2>
+            <p> Hello Student,</p>
             <p>To complete your account claim, please use the code below:</p>
             <div style='background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #0c0481;'>$otpCode</div>
             <p style='font-size: 12px; color: #888;'>Expires in 1 hour.</p>
