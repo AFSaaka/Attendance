@@ -1,22 +1,22 @@
 <?php
 // backend/api/auth/register_debug.php
 
-// 1. FORCE ERROR REPORTING - This is crucial for live testing
+// 1. FORCE ERROR REPORTING
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-header('Content-Type: text/html'); // Change to HTML for easier browser reading
+header('Content-Type: text/html'); 
 require_once __DIR__ . '/../../config/db.php'; 
 require_once __DIR__ . '/../../utils/mailer.php';
 
-echo "<h2>Starting Debug Test...</h2>";
+echo "<h2>Starting Debug Test (PostgreSQL Fix)...</h2>";
 
 $pdo = getDB();
 
-// 2. FIXED TEST VALUES - Replace these with real data from your registry
-$uin = '20262027';         // Put a real UIN from your DB here
-$indexNumber = 'MLT/0123/25';  // Put a real Index Number here
+// 2. FIXED TEST VALUES
+$uin = '20262027'; 
+$indexNumber = 'MLT/0123/25'; 
 $email = 'test@example.com'; 
 $password = 'password123';
 $confirmPassword = 'password123';
@@ -35,12 +35,11 @@ try {
     }
     echo "✅ Student found in registry (ID: {$student['id']}).<br>";
 
-    // Check Existing User
     $checkUser = $pdo->prepare("SELECT id, is_email_verified FROM users WHERE uin = ?");
     $checkUser->execute([$uin]);
     $existingUser = $checkUser->fetch(PDO::FETCH_ASSOC);
 
-    $otp = '123456'; // Fixed OTP for testing
+    $otp = '123456'; 
     $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour'));
     $current_time = date('Y-m-d H:i:s');
 
@@ -54,14 +53,22 @@ try {
         
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
         
-        // Use standard syntax (LastInsertId) instead of RETURNING id for compatibility
+        // FIX: Added RETURNING id for PostgreSQL UUID support
         $insertUser = $pdo->prepare("
             INSERT INTO users (email, password_hash, role, uin, student_id, is_active, is_email_verified, otp_code, otp_expires_at, otp_last_sent_at) 
             VALUES (?, ?, 'student', ?, ?, TRUE, FALSE, ?, ?, ?)
+            RETURNING id
         ");
         
         $insertUser->execute([$email, $hashedPassword, $uin, $student['id'], $otp, $expires_at, $current_time]);
-        $newUserId = $pdo->lastInsertId(); 
+        
+        // FIX: Fetch the ID from the statement result
+        $result = $insertUser->fetch(PDO::FETCH_ASSOC);
+        $newUserId = $result['id'] ?? null;
+
+        if (!$newUserId) {
+            throw new Exception("User inserted but ID was not returned. Check table structure.");
+        }
 
         echo "✅ User inserted (ID: $newUserId).<br>";
 
