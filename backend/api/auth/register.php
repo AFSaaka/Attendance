@@ -137,7 +137,7 @@ try {
     }
 
     // Optional: log for debugging
-    // error_log("Registration failed: " . $e->getMessage());
+    error_log("Registration failed: " . $e->getMessage());
 
     echo json_encode($response);
 }
