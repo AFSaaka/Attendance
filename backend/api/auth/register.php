@@ -72,13 +72,13 @@ try {
         // Note: Using RETURNING id (PostgreSQL) - if using MySQL, use $pdo->lastInsertId()
         $insertUser = $pdo->prepare("
             INSERT INTO users (email, password_hash, role, uin, student_id, is_active, is_email_verified, otp_code, otp_expires_at, otp_last_sent_at) 
-            VALUES (?, ?, 'student', ?, ?, TRUE, FALSE, ?, ?, ?) RETURNING id
+            VALUES (?, ?, 'student', ?, ?, true, false, ?, ?, ?) RETURNING id
         ");
         $insertUser->execute([$email, $hashedPassword, $uin, $student['id'], $otp, $expires_at, $current_time]);
         $newUserId = $insertUser->fetch(PDO::FETCH_ASSOC)['id'];
 
         $pdo->prepare("INSERT INTO students (user_id, registry_id) VALUES (?, ?)")->execute([$newUserId, $student['id']]);
-        $pdo->prepare("UPDATE student_registry SET is_claimed = TRUE WHERE id = ?")->execute([$student['id']]);
+        $pdo->prepare("UPDATE student_registry SET is_claimed = true WHERE id = ?")->execute([$student['id']]);
         
         $pdo->commit();
         $targetEmail = $email;
