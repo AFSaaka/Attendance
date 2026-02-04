@@ -2,27 +2,35 @@
 // backend/api/auth/register.php
 header('Content-Type: application/json');
 
+// Optional: temporary debug (remove or comment out in production)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../utils/mailer.php';
 
 try {
     $pdo = getDB();
-
-    // FORCE exceptions (critical for live servers)
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-
-    $data = json_decode(file_get_contents('php://input'), true);
-
-    if (!$data) {
-        throw new Exception("No data received");
+    if (!$pdo) {
+        throw new Exception("Database connection failed.");
     }
 
-    // Normalize inputs
-    $uin = trim($data['uin'] ?? '');
-    $indexNumber = trim($data['indexNumber'] ?? '');
-    $email = strtolower(trim($data['email'] ?? ''));
-    $password = $data['password'] ?? '';
+    // Enable exceptions for all SQL errors (very helpful on production)
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false); // Better security/performance
+
+    $rawInput = file_get_contents('php://input');
+    $data = json_decode($rawInput, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
+        throw new Exception("Invalid JSON data received");
+    }
+
+    $uin           = trim($data['uin'] ?? '');
+    $indexNumber   = trim($data['indexNumber'] ?? '');
+    $email         = trim($data['email'] ?? '');
+    $password      = $data['password'] ?? '';
     $confirmPassword = $data['confirmPassword'] ?? '';
 
     // Validation
@@ -38,59 +46,39 @@ try {
         throw new Exception("Password must be at least 6 characters long.");
     }
 
-    // Check registry
-    $stmt = $pdo->prepare("
-        SELECT id, is_claimed
-        FROM student_registry
-        WHERE TRIM(uin) = TRIM(?) AND TRIM(index_number) = TRIM(?)
-    ");
+    // 1. Check Registry and existing User status
+    $stmt = $pdo->prepare("SELECT id, is_claimed FROM student_registry WHERE uin = ? AND index_number = ?");
     $stmt->execute([$uin, $indexNumber]);
-    $student = $stmt->fetch();
+    $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$student) {
         throw new Exception("Student not found in registry.");
     }
 
-    // Check existing user
-    $checkUser = $pdo->prepare("
-        SELECT id, is_email_verified
-        FROM users
-        WHERE uin = ?
-    ");
+    // Check if user already exists
+    $checkUser = $pdo->prepare("SELECT id, is_email_verified FROM users WHERE uin = ?");
     $checkUser->execute([$uin]);
-    $existingUser = $checkUser->fetch();
+    $existingUser = $checkUser->fetch(PDO::FETCH_ASSOC);
 
+    // If already claimed AND email verified → real duplicate
     if ($student['is_claimed'] && $existingUser && $existingUser['is_email_verified']) {
         http_response_code(403);
         throw new Exception("Account already claimed and verified. Please login.");
     }
 
-    // OTP generation (safe fallback)
-    try {
-        $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    } catch (Exception $e) {
-        $otp = str_pad(mt_rand(0, 999999), 6, '0', STR_PAD_LEFT);
-    }
-
+    $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     $expires_at = date('Y-m-d H:i:s', strtotime('+1 hour'));
     $current_time = date('Y-m-d H:i:s');
 
     if ($existingUser && !$existingUser['is_email_verified']) {
-        // Re-send OTP for unverified account
+        // Existing unverified user → just update OTP
         $updateOtp = $pdo->prepare("
-            UPDATE users
-            SET otp_code = ?, otp_expires_at = ?, otp_last_sent_at = ?
+            UPDATE users 
+            SET otp_code = ?, otp_expires_at = ?, otp_last_sent_at = ? 
             WHERE id = ?
         ");
-        $updateOtp->execute([
-            $otp,
-            $expires_at,
-            $current_time,
-            $existingUser['id']
-        ]);
-
+        $updateOtp->execute([$otp, $expires_at, $current_time, $existingUser['id']]);
         $targetEmail = $email;
-
     } else {
         // Fresh registration
         $pdo->beginTransaction();
@@ -98,57 +86,29 @@ try {
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
         $insertUser = $pdo->prepare("
-            INSERT INTO users (
-                email,
-                password_hash,
-                role,
-                uin,
-                student_id,
-                is_active,
-                is_email_verified,
-                otp_code,
-                otp_expires_at,
-                otp_last_sent_at
-            )
-            VALUES (?, ?, 'student', ?, ?, true, false, ?, ?, ?)
-            RETURNING id
+            INSERT INTO users 
+            (email, password_hash, role, uin, student_id, is_active, is_email_verified, otp_code, otp_expires_at, otp_last_sent_at)
+            VALUES (?, ?, 'student', ?, ?, TRUE, FALSE, ?, ?, ?)
         ");
+        $insertUser->execute([$email, $hashedPassword, $uin, $student['id'], $otp, $expires_at, $current_time]);
 
-        $insertUser->execute([
-            $email,
-            $hashedPassword,
-            $uin,
-            $student['id'],
-            $otp,
-            $expires_at,
-            $current_time
-        ]);
+        $newUserId = $pdo->lastInsertId();   // ← This is the key fix (works on MySQL & PostgreSQL)
 
-        $newUserId = $insertUser->fetch()['id'];
+        $pdo->prepare("INSERT INTO students (user_id, registry_id) VALUES (?, ?)")
+            ->execute([$newUserId, $student['id']]);
 
-        $pdo->prepare("
-            INSERT INTO students (user_id, registry_id)
-            VALUES (?, ?)
-        ")->execute([$newUserId, $student['id']]);
-
-        $pdo->prepare("
-            UPDATE student_registry
-            SET is_claimed = true
-            WHERE id = ?
-        ")->execute([$student['id']]);
+        $pdo->prepare("UPDATE student_registry SET is_claimed = TRUE WHERE id = ?")
+            ->execute([$student['id']]);
 
         $pdo->commit();
-
         $targetEmail = $email;
     }
 
-    // Send OTP email
+    // 2. Send email (outside transaction — failure should not rollback account creation)
     if (sendOTPEmail($targetEmail, $otp)) {
-        echo json_encode([
-            "status" => "success",
-            "message" => "OTP sent to $targetEmail."
-        ]);
+        echo json_encode(["status" => "success", "message" => "OTP sent to $targetEmail."]);
     } else {
+        // Still success — user can resend OTP
         echo json_encode([
             "status" => "success",
             "message" => "Account secured, but email failed. Please click 'Resend' on the next screen."
@@ -160,15 +120,23 @@ try {
         $pdo->rollBack();
     }
 
-    if (http_response_code() === 200) {
-        http_response_code(400);
+    $statusCode = (http_response_code() === 200) ? 400 : http_response_code();
+    if ($statusCode === 0) $statusCode = 500; // rare case
+
+    http_response_code($statusCode);
+
+    $response = [
+        "status"  => "error",
+        "message" => $e->getMessage(),
+    ];
+
+    // Helpful during debugging
+    if ($existingUser && !$existingUser['is_email_verified']) {
+        $response["requires_verification"] = true;
     }
 
-    error_log("REGISTER ERROR: " . $e->getMessage());
+    // Optional: log full error (uncomment in production temporarily)
+    // error_log("Registration error: " . $e->getMessage() . " | File: " . $e->getFile() . " | Line: " . $e->getLine());
 
-    echo json_encode([
-        "status" => "error",
-        "message" => $e->getMessage(),
-        "requires_verification" => (!empty($existingUser) && empty($existingUser['is_email_verified']))
-    ]);
+    echo json_encode($response);
 }
