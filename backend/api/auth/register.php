@@ -1,7 +1,6 @@
 <?php
 // backend/api/auth/register_debug.php
 
-// 1. FORCE ERROR REPORTING
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -14,10 +13,9 @@ echo "<h2>Starting Debug Test (PostgreSQL Fix)...</h2>";
 
 $pdo = getDB();
 
-// 2. FIXED TEST VALUES
 $uin = '20262027'; 
 $indexNumber = 'MLT/0123/25'; 
-$email = 'test@example.com'; 
+$email = 'afsaaka@yahoo.com'; 
 $password = 'password123';
 $confirmPassword = 'password123';
 
@@ -25,13 +23,15 @@ try {
     if (!$pdo) throw new Exception("Database connection failed.");
     echo "✅ Database Connected.<br>";
 
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
     // Check Registry
     $stmt = $pdo->prepare("SELECT id, is_claimed FROM student_registry WHERE uin = ? AND index_number = ?");
     $stmt->execute([$uin, $indexNumber]);
     $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$student) {
-        throw new Exception("Student not found in registry. Check if UIN $uin and Index $indexNumber exist in student_registry table.");
+        throw new Exception("Student not found in registry.");
     }
     echo "✅ Student found in registry (ID: {$student['id']}).<br>";
 
@@ -53,7 +53,6 @@ try {
         
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
         
-        // FIX: Added RETURNING id for PostgreSQL UUID support
         $insertUser = $pdo->prepare("
             INSERT INTO users (email, password_hash, role, uin, student_id, is_active, is_email_verified, otp_code, otp_expires_at, otp_last_sent_at) 
             VALUES (?, ?, 'student', ?, ?, TRUE, FALSE, ?, ?, ?)
@@ -62,18 +61,33 @@ try {
         
         $insertUser->execute([$email, $hashedPassword, $uin, $student['id'], $otp, $expires_at, $current_time]);
         
-        // FIX: Fetch the ID from the statement result
         $result = $insertUser->fetch(PDO::FETCH_ASSOC);
         $newUserId = $result['id'] ?? null;
 
         if (!$newUserId) {
-            throw new Exception("User inserted but ID was not returned. Check table structure.");
+            throw new Exception("User inserted but ID was not returned.");
         }
 
         echo "✅ User inserted (ID: $newUserId).<br>";
 
-        $pdo->prepare("INSERT INTO students (user_id, registry_id) VALUES (?, ?)")->execute([$newUserId, $student['id']]);
-        $pdo->prepare("UPDATE student_registry SET is_claimed = TRUE WHERE id = ?")->execute([$student['id']]);
+        // FIX 1: Explicit UUID cast for safety (very common need in PostgreSQL + PHP)
+        $insertStudent = $pdo->prepare("
+            INSERT INTO students (user_id, registry_id) 
+            VALUES (CAST(? AS uuid), CAST(? AS uuid))
+        ");
+        $insertStudent->execute([$newUserId, $student['id']]);
+
+        echo "✅ Student link created.<br>";
+
+        // FIX 2: Same for update (in case registry.id is also UUID)
+        $updateRegistry = $pdo->prepare("
+            UPDATE student_registry 
+            SET is_claimed = TRUE 
+            WHERE id = CAST(? AS uuid)
+        ");
+        $updateRegistry->execute([$student['id']]);
+
+        echo "✅ Registry marked as claimed.<br>";
         
         $pdo->commit();
         echo "✅ Transaction committed.<br>";
@@ -83,14 +97,17 @@ try {
     if (sendOTPEmail($email, $otp)) {
         echo "✅ Email sent successfully.<br>";
     } else {
-        echo "❌ Email failed to send (Check mailer.php config).<br>";
+        echo "❌ Email failed to send.<br>";
     }
 
-    echo "<h3>TEST SUCCESSFUL!</h3>";
+    echo "<h3 style='color:green;'>TEST SUCCESSFUL!</h3>";
 
 } catch (Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+    if (isset($pdo) && $pdo->inTransaction()) {
+        try { $pdo->rollBack(); } catch (Exception $rb) { /* ignore rollback errors */ }
+    }
     echo "<h3 style='color:red;'>TEST FAILED</h3>";
-    echo "<b>Error Message:</b> " . $e->getMessage() . "<br>";
+    echo "<b>Error Message:</b> " . htmlspecialchars($e->getMessage()) . "<br>";
     echo "<b>File:</b> " . $e->getFile() . " on line " . $e->getLine() . "<br>";
+    echo "<b>Previous statements status:</b> User insert succeeded, failure after that.<br>";
 }
