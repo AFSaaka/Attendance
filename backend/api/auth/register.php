@@ -1,5 +1,16 @@
 <?php
 // backend/api/auth/register.php
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    header('Access-Control-Allow-Origin: https://ttfpp-attendance.netlify.app');  // ← Change * to your exact frontend domain later (e.g. https://your-frontend.vercel.app)
+    header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization');  // Add more if you use custom headers
+    header('Access-Control-Max-Age: 86400');  // Cache preflight for 24 hours
+    http_response_code(204);  // No content – success for OPTIONS
+    exit;
+}
+header('Access-Control-Allow-Origin: https://ttfpp-attendance.netlify.app');  // Same as above – tighten later
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../config/db.php';
