@@ -16,8 +16,17 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../utils/mailer.php';
 
+ $pdo = getDB();
+    $data = json_decode(file_get_contents('php://input'), true);
+  // Extract and trim inputs
+    $uin           = trim($data['uin']           ?? '');
+    $indexNumber   = trim($data['indexNumber']   ?? '');
+    $email         = trim($data['email']         ?? '');
+    $password      = $data['password']           ?? '';
+    $confirmPassword = $data['confirmPassword'] ?? '';
+
 try {
-    $pdo = getDB();
+   
     if (!$pdo) {
         throw new Exception("Database connection failed.");
     }
@@ -26,18 +35,13 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 
-    $data = json_decode(file_get_contents('php://input'), true);
+
 
     if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
         throw new Exception("Invalid JSON data received");
     }
 
-    // Extract and trim inputs
-    $uin           = trim($data['uin']           ?? '');
-    $indexNumber   = trim($data['indexNumber']   ?? '');
-    $email         = trim($data['email']         ?? '');
-    $password      = $data['password']           ?? '';
-    $confirmPassword = $data['confirmPassword'] ?? '';
+  
 
     // Validation
     if (empty($uin) || empty($indexNumber) || empty($email) || empty($password) || empty($confirmPassword)) {
