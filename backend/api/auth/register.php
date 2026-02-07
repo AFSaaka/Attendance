@@ -11,43 +11,44 @@ try {
         throw new Exception("Database connection failed.");
     }
 
-    // Enable proper error handling
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 
-    $data = json_decode(file_get_contents('php://input'), true);
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
+    
+    // Debug incoming data to verify keys like 'indexNumber' match frontend
+    file_put_contents('debug_log.txt', "Input: " . $json . PHP_EOL . "Parsed: " . print_r($data, true));
 
     if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
         throw new Exception("Invalid JSON data received");
     }
 
-    // Extract and trim inputs
-    $uin           = trim($data['uin']           ?? '');
-    $indexNumber   = trim($data['indexNumber']   ?? '');
-    $email         = trim($data['email']         ?? '');
-    $password      = $data['password']           ?? '';
-    $confirmPassword = $data['confirmPassword'] ?? '';
+    $uin             = trim($data['uin']           ?? '');
+    $indexNumber     = trim($data['indexNumber']   ?? '');
+    $email           = trim($data['email']         ?? '');
+    $password        = $data['password']           ?? '';
+    $confirmPassword = $data['confirmPassword']    ?? '';
 
-    // Validation
     if (empty($uin) || empty($indexNumber) || empty($email) || empty($password) || empty($confirmPassword)) {
         throw new Exception("All fields are required.");
     }
 
     if ($password !== $confirmPassword) {
-        throw new Exception("Passwords do not match. Please re-enter.");
+        throw new Exception("Passwords do not match.");
     }
 
     if (strlen($password) < 6) {
         throw new Exception("Password must be at least 6 characters long.");
     }
 
-    // 1. Check Registry
+    // 1. Check Student Registry
     $stmt = $pdo->prepare("SELECT id, is_claimed FROM student_registry WHERE uin = ? AND index_number = ?");
     $stmt->execute([$uin, $indexNumber]);
     $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$student) {
-        throw new Exception("Student not found in registry.");
+        throw new Exception("Student not found in registry. Please check your UIN/Index Number.");
     }
 
     // 2. Check Existing User
@@ -79,22 +80,32 @@ try {
 
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
+        // FIX: Ensured columns (10) match values (3 literals + 7 placeholders = 10)
         $insertUser = $pdo->prepare("
             INSERT INTO users 
             (email, password_hash, role, uin, student_id, is_active, is_email_verified, otp_code, otp_expires_at, otp_last_sent_at) 
             VALUES (?, ?, 'student', ?, CAST(? AS uuid), TRUE, FALSE, ?, ?, ?)
             RETURNING id
         ");
-        $insertUser->execute([$email, $hashedPassword, $uin, $student['id'], $otp, $expires_at, $current_time]);
+        
+        $insertUser->execute([
+            $email,            // 1
+            $hashedPassword,   // 2
+            $uin,              // 3
+            $student['id'],    // 4
+            $otp,              // 5
+            $expires_at,       // 6
+            $current_time      // 7
+        ]);
 
         $row = $insertUser->fetch(PDO::FETCH_ASSOC);
         $newUserId = $row['id'] ?? null;
 
         if (!$newUserId) {
-            throw new Exception("Failed to retrieve new user ID after insert.");
+            throw new Exception("Failed to retrieve new user ID.");
         }
 
-        // Link student record
+        // Link student record (Crucial CAST for Postgres)
         $pdo->prepare("
             INSERT INTO students (user_id, registry_id) 
             VALUES (CAST(? AS uuid), CAST(? AS uuid))
@@ -111,7 +122,7 @@ try {
         $targetEmail = $email;
     }
 
-    // 3. Send OTP email (outside transaction — failure shouldn't rollback account)
+    // 3. Send OTP
     if (sendOTPEmail($targetEmail, $otp)) {
         echo json_encode([
             "status"  => "success",
@@ -120,23 +131,16 @@ try {
     } else {
         echo json_encode([
             "status"  => "success",
-            "message" => "Account secured, but email failed. Please click 'Resend' on the next screen."
+            "message" => "Account secured, but email failed. You can use 'Resend' on the next screen."
         ]);
     }
 
 } catch (Exception $e) {
-    // Safe rollback
     if (isset($pdo) && $pdo->inTransaction()) {
-        try {
-            $pdo->rollBack();
-        } catch (Exception $rollbackEx) {
-            // Ignore secondary rollback errors to not hide original error
-        }
+        $pdo->rollBack();
     }
 
-    // Set appropriate HTTP status
-    $status = http_response_code();
-    if ($status === 200) {
+    if (http_response_code() === 200) {
         http_response_code(400);
     }
 
@@ -145,7 +149,6 @@ try {
         "message" => $e->getMessage(),
     ];
 
-    // Helpful flag for frontend (resend OTP flow)
     if (isset($existingUser) && !$existingUser['is_email_verified']) {
         $response["requires_verification"] = true;
     }
