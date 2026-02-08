@@ -2,16 +2,9 @@
 // backend/api/auth/register.php
 
 require_once __DIR__ . '/../common_auth.php';
-require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../utils/mailer.php';
 
-try {
-    /*
-    |--------------------------------------------------------------------------
-    | 1. Parse & validate JSON FIRST
-    |--------------------------------------------------------------------------
-    */
-    $rawInput = file_get_contents('php://input');
+ $rawInput = file_get_contents('php://input');
     $data = json_decode($rawInput, true);
 
     if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
@@ -25,7 +18,7 @@ try {
     $password         = $data['password'] ?? '';
     $confirmPassword  = $data['confirmPassword'] ?? '';
 
-    if (
+     if (
         empty($uin) ||
         empty($indexNumber) ||
         empty($email) ||
@@ -43,25 +36,10 @@ try {
         throw new Exception("Password must be at least 6 characters long.");
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 2. DB Connection
-    |--------------------------------------------------------------------------
-    */
-    $pdo = getDB();
 
-    if (!$pdo) {
-        throw new Exception("Database connection failed.");
-    }
+try {
 
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 
-    /*
-    |--------------------------------------------------------------------------
-    | 3. Check Student Registry
-    |--------------------------------------------------------------------------
-    */
     $stmt = $pdo->prepare("
         SELECT id, is_claimed 
         FROM student_registry 
