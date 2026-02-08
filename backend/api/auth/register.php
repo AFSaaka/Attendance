@@ -1,13 +1,7 @@
 <?php
 // backend/api/auth/register.php
 
-// ⚠️ DEV ONLY — remove in production
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-header('Content-Type: application/json');
-
+require_once __DIR__ . '/../common_auth.php';
 require_once __DIR__ . '/../../config/db.php';
 require_once __DIR__ . '/../../utils/mailer.php';
 
