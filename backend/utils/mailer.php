@@ -1,14 +1,26 @@
 <?php
 // backend/utils/mailer.php
+require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 /**
- * SendGrid Web API Helper (Standardizes the HTTPS request)
+ * SendGrid Web API Helper
  */
 function sendViaSendGridAPI($recipientEmail, $recipientName, $subject, $htmlContent, $plainText) {
-    // 1. Get Settings
-    $apiKey = getenv('SMTP_PASS'); 
-    $fromEmail = getenv('SMTP_FROM') ?: 'no-reply@uds.edu.gh';
+    // 1. GET SETTINGS (Matching your db.php flow)
+    try {
+        $env = loadEnv(); // This function handles Production vs Local .env
+        $apiKey = $env['SMTP_PASS'] ?? null;
+        $fromEmail = $env['SMTP_FROM'] ?? 'no-reply@uds.edu.gh';
+    } catch (Exception $e) {
+        error_log("Mailer Config Error: " . $e->getMessage());
+        return false;
+    }
+
+    if (!$apiKey) {
+        error_log("SendGrid Error: API Key is missing.");
+        return false;
+    }
 
     $url = 'https://api.sendgrid.com/v3/mail/send';
     
@@ -19,14 +31,8 @@ function sendViaSendGridAPI($recipientEmail, $recipientName, $subject, $htmlCont
         ]],
         "from" => ["email" => $fromEmail, "name" => "UDS TTFPP Portal"],
         "content" => [
-            [
-                "type" => "text/plain",
-                "value" => $plainText
-            ],
-            [
-                "type" => "text/html",
-                "value" => $htmlContent
-            ]
+            ["type" => "text/plain", "value" => $plainText],
+            ["type" => "text/html", "value" => $htmlContent]
         ]
     ];
 
@@ -39,6 +45,12 @@ function sendViaSendGridAPI($recipientEmail, $recipientName, $subject, $htmlCont
     ]);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    
+    // 2. CRITICAL LOCAL FIX: Disable SSL verification on Local Windows
+    // Without this, local cURL often fails with "SSL certificate problem"
+    if (!getenv('DATABASE_URL')) {
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    }
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -64,7 +76,11 @@ function sendOTPEmail($recipientEmail, $otpCode) {
             <p> Hello Student,</p>
             <p>To complete your account claim, please use the code below:</p>
             <div style='background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #0c0481;'>$otpCode</div>
-            <p style='font-size: 12px; color: #888;'>Expires in 1 hour.</p>
+            <p style='font-size: 12px; color: #888;'> This code expires in 1 hour.</p>
+            <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
+            <p style='font-size: 12px; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 1px;'>
+                University for Development Studies - TTFPP
+            </p>
         </div>";
 
     return sendViaSendGridAPI($recipientEmail, "Student", $subject, $htmlContent, $plainText);
@@ -82,7 +98,11 @@ function sendAdminInviteEmail($recipientEmail, $userName, $otpCode) {
             <p>Hello <strong>$userName</strong>,</p>
             <p>You have been granted administrative access. Use the code below:</p>
             <div style='background: #f8fafc; border: 2px dashed #cbd5e1; padding: 25px; text-align: center; font-size: 36px; font-weight: bold; color: #1e40af;'>$otpCode</div>
-            <p>Valid for 48 hours.</p>
+            <p>This code is valid for 48 hours.</p>
+            <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
+            <p style='font-size: 12px; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 1px;'>
+                University for Development Studies - TTFPP
+            </p>
         </div>";
 
     return sendViaSendGridAPI($recipientEmail, $userName, $subject, $htmlContent, $plainText);
