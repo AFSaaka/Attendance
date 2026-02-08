@@ -77,8 +77,8 @@ function sendOTPEmail($recipientEmail, $otpCode) {
             <p>To complete your account claim, please use the code below:</p>
             <div style='background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #0c0481;'>$otpCode</div>
             <p style='font-size: 12px; color: #888;'> This code expires in 1 hour.</p>
-            <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
-            <p style='font-size: 12px; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 1px;'>
+            <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 10px 0;'>
+            <p style='font-size: 12px; color: #94a3b8; text-align: center;'>
                 University for Development Studies - TTFPP
             </p>
         </div>";
@@ -99,8 +99,8 @@ function sendAdminInviteEmail($recipientEmail, $userName, $otpCode) {
             <p>You have been granted administrative access. Use the code below:</p>
             <div style='background: #f8fafc; border: 2px dashed #cbd5e1; padding: 25px; text-align: center; font-size: 36px; font-weight: bold; color: #1e40af;'>$otpCode</div>
             <p>This code is valid for 48 hours.</p>
-            <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 30px 0;'>
-            <p style='font-size: 12px; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 1px;'>
+            <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 10px 0;'>
+            <p style='font-size: 12px; color: #94a3b8; text-align: center;'>
                 University for Development Studies - TTFPP
             </p>
         </div>";
