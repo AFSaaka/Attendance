@@ -1,24 +1,23 @@
 <?php
-// backend/public/index.php
+//backend/public/index.php
 
-// 0. Configure Session Cookies for Cross-Site (Netlify to Render)
-ini_set('session.cookie_samesite', 'None');
-ini_set('session.cookie_secure', '1'); // Required if SameSite is 'None'
+// 1. Session Security (Optimized for Safari)
+ini_set('session.cookie_samesite', 'Lax'); 
+ini_set('session.cookie_secure', '1'); 
 ini_set('session.cookie_httponly', '1');
+ini_set('session.use_only_cookies', '1');
 
-// 1. DYNAMIC CORS (Allow Localhost for dev AND your future Netlify URL)
+// 2. CORS (Now simplified because of the proxy)
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+// Allow both local dev and your Netlify production domain
 $allowed_origins = [
     "http://localhost:5173",
-    "https://ttfpp-attendance.netlify.app" // Add this once you have it
+    "https://ttfpp-attendance.netlify.app"
 ];
-
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 if (in_array($origin, $allowed_origins)) {
     header("Access-Control-Allow-Origin: $origin");
-} else {
-    // Fallback for testing or public access
-    header("Access-Control-Allow-Origin: *"); 
 }
 
 header("Access-Control-Allow-Credentials: true");
@@ -31,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+session_start(); // Start the session AFTER setting params
 
 // 2. Extract the URL
 $url = isset($_GET['url']) ? rtrim($_GET['url'], '/') : '';

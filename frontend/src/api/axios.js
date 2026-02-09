@@ -3,7 +3,7 @@ import axios from "axios";
 
 const instance = axios.create({
   // Ensure this matches the variable name in your .env exactly
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: "/api",
   withCredentials: true, // MANDATORY for PHP Sessions
 });
 
