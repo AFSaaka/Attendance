@@ -11,6 +11,9 @@ const DashboardHero = ({
   onAttendance,
   isSubmitting,
   status,
+  isCompleted,
+  buttonText,
+  buttonDisabled,
 }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -82,7 +85,16 @@ const DashboardHero = ({
     marginBottom: "10px",
     textTransform: "uppercase",
   };
-
+  const renderAttendanceButton = () => (
+    <AttendanceButton
+      location={location}
+      onClick={onAttendance}
+      disabled={buttonDisabled} // Use the logic from StudentDashboard
+      status={status}
+      isCompleted={isCompleted} // Pass the white-mode flag
+      buttonText={buttonText} // Pass the "Submitted" text
+    />
+  );
   return (
     <section style={heroStyle}>
       {/* Decorative Background Element */}
@@ -172,11 +184,7 @@ const DashboardHero = ({
               justifyContent: "center",
             }}
           >
-            <AttendanceButton
-              location={location}
-              onClick={onAttendance}
-              disabled={isSubmitting}
-            />
+            {renderAttendanceButton()}
           </div>
         )}
       </div>
@@ -184,12 +192,7 @@ const DashboardHero = ({
       {/* Desktop View: Attendance Button */}
       {!isMobile && (
         <div style={{ zIndex: 2, marginRight: "40px" }}>
-          <AttendanceButton
-            location={location}
-            onClick={onAttendance}
-            disabled={isSubmitting}
-            status={status}
-          />
+          {renderAttendanceButton()}
         </div>
       )}
     </section>

@@ -13,7 +13,14 @@ import OtpInput from "./components/OtpInput";
 import FullScreenLoader from "./components/FullScreenLoader";
 import { useGeolocation } from "./hooks/useGeolocation";
 import ErrorBoundary from "./components/ErrorBoundary";
-
+const getSecureHash = async (email, password) => {
+  const msgUint8 = new TextEncoder().encode(
+    `${email.toLowerCase()}:${password}`,
+  );
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+};
 // --- AuthGuard optimized with useMemo to prevent re-renders ---
 const AuthGuard = ({ children, user, allowedRole }) => {
   if (!user) return <Navigate to="/" replace />;
@@ -96,19 +103,41 @@ function App() {
     );
   }, [formData]);
 
+  // --- Updated Title Logic ---
   useEffect(() => {
     const titles = {
       login: "TTFPP | Login",
       signup: "TTFPP | Registration",
       verify: "TTFPP | Verification",
     };
-    document.title = titles[view] || "TTFPP | Portal";
-  }, [view]);
+
+    if (!user) {
+      // If no user, use the 'view' state to determine title
+      document.title = titles[view] || "TTFPP | Portal";
+    } else {
+      // If user exists, use their role for the title
+      const roleTitles = {
+        admin: "TTFPP | Admin Dashboard",
+        student: "TTFPP | Student Portal",
+        coordinator: "TTFPP | Coordinator Dashboard",
+      };
+      document.title = roleTitles[user.role] || "TTFPP | Portal";
+    }
+  }, [view, user]); // Added 'user' as a dependency
 
   const handleLogout = useCallback(() => {
+    // 1. Clear ALL session data
     localStorage.removeItem("uds_user");
+    localStorage.removeItem("uds_vault"); // CRITICAL: Prevents next user from hijacking offline session
+
+    // 2. Update State
     setUser(null);
     setView("login");
+
+    // 3. Reset title manually for immediate feedback
+    document.title = "TTFPP | Login";
+
+    // 4. Redirect and cleanup
     resetLocation();
     navigate("/", { replace: true });
   }, [navigate, resetLocation]);
@@ -219,7 +248,16 @@ function App() {
   }, []);
 
   const handleAction = async () => {
+    // --- 1. SIGNUP VALIDATION ---
     if (view === "signup") {
+      // Explicitly check navigator.onLine as a backup to the isOffline state
+      if (isOffline || !navigator.onLine) {
+        setMessage({
+          type: "error",
+          text: "Account registration requires an active internet connection.",
+        });
+        return;
+      }
       if (!formData.password || !formData.confirmPassword) {
         setMessage({
           type: "error",
@@ -240,6 +278,7 @@ function App() {
       }
     }
 
+    // --- 2. INITIALIZE LOADING STATE ---
     setProcessingMessage(
       view === "login" ? "Signing in..." : "Creating your account...",
     );
@@ -247,6 +286,29 @@ function App() {
     setMessage({ type: "", text: "" });
     const startTime = Date.now();
 
+    // --- 3. PRE-EMPTIVE OFFLINE LOGIN BRANCH ---
+    // This handles cases where we KNOW we are offline before trying the network
+    if (view === "login" && (isOffline || !navigator.onLine)) {
+      const cachedVault = localStorage.getItem("uds_vault");
+      const cachedUser = localStorage.getItem("uds_user");
+
+      if (cachedVault && cachedUser) {
+        const inputHash = await getSecureHash(
+          formData.email,
+          formData.password,
+        );
+        if (inputHash === cachedVault) {
+          setTimeout(() => {
+            setUser(JSON.parse(cachedUser));
+            setProcessingMessage(null);
+            setIsLoading(false);
+          }, 1500);
+          return;
+        }
+      }
+    }
+
+    // --- 4. ONLINE ACTION BRANCH ---
     try {
       const endpoint = view === "login" ? "auth/login" : "auth/register";
       const payload = { ...formData, device_id: getDeviceId() };
@@ -254,28 +316,86 @@ function App() {
       const response = await axios.post(endpoint, payload);
 
       const duration = Date.now() - startTime;
-      const waitTime = Math.max(0, 3000 - duration);
+      const waitTime = Math.max(0, 1500 - duration);
 
-      setTimeout(() => {
-        setProcessingMessage(null);
-        setIsLoading(false);
-
+      setTimeout(async () => {
         if (response.data.status === "success") {
           if (view === "login") {
             localStorage.removeItem("uds_login_lock");
             const userData = response.data.user;
-            setUser(userData);
+
+            // SECURE VAULT UPDATE
             localStorage.setItem("uds_user", JSON.stringify(userData));
+            const loginHash = await getSecureHash(
+              formData.email,
+              formData.password,
+            );
+            localStorage.setItem("uds_vault", loginHash);
+
+            setUser(userData);
+            setProcessingMessage(null);
+            setIsLoading(false);
             if (userData.must_reset_password) navigate("/reset-password");
           } else {
+            setProcessingMessage(null);
+            setIsLoading(false);
             setMessage({ type: "success", text: response.data.message });
+            setFormData((prev) => ({
+              ...prev,
+              password: "",
+              confirmPassword: "",
+            }));
             setView("verify");
           }
         }
       }, waitTime);
     } catch (error) {
+      // 1. Check if this is a connection failure (no response from server)
+      const isNetworkError = !error.response;
+
+      if (view === "login" && isNetworkError) {
+        console.log("Network unreachable. Checking local vault...");
+
+        const cachedVault = localStorage.getItem("uds_vault");
+        const cachedUser = localStorage.getItem("uds_user");
+
+        if (cachedVault && cachedUser) {
+          const inputHash = await getSecureHash(
+            formData.email,
+            formData.password,
+          );
+
+          if (inputHash === cachedVault) {
+            // MATCH FOUND: Log them in and EXIT the function
+            setTimeout(() => {
+              const userData = JSON.parse(cachedUser);
+              setUser(userData);
+              setProcessingMessage(null);
+              setIsLoading(false);
+            }, 1500);
+            return; // <--- CRITICAL: Stop here so we don't show the error message
+          } else {
+            // CREDENTIALS DON'T MATCH VAULT
+            setMessage({ type: "error", text: "Invalid offline credentials." });
+          }
+        } else {
+          // NO VAULT FOUND
+          setMessage({
+            type: "error",
+            text: "No saved session found. Please connect to the internet.",
+          });
+        }
+
+        // Cleanup and Exit
+        setProcessingMessage(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Standard Server Errors (e.g., 401 Unauthorized, 403 Forbidden)
       setProcessingMessage(null);
       setIsLoading(false);
+
       const status = error.response?.status;
       const data = error.response?.data;
 
@@ -286,7 +406,11 @@ function App() {
         setMessage({ type: "error", text: data.message });
         setView("verify");
       } else {
-        setMessage({ type: "error", text: data?.message || "Action failed." });
+        setMessage({
+          type: "error",
+          text:
+            data?.message || "Action failed. Check your internet connection.",
+        });
       }
     }
   };

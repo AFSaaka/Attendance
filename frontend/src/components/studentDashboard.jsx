@@ -251,12 +251,11 @@ const StudentDashboard = ({
           status={attendanceStatus}
           isInRange={isInRange}
           distance={distance}
-          buttonText={
-            hasSignedToday ? "Attendance Completed" : "Take Attendance Now"
-          }
+          buttonText={hasSignedToday ? "Submitted" : "Take Attendance "}
           buttonDisabled={
             hasSignedToday || !location.lat || !location.lng || isSubmitting
           }
+          isCompleted={hasSignedToday}
         />
 
         <AttendanceModal

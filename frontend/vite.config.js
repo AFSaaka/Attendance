@@ -29,4 +29,16 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost/uds-api",
+        changeOrigin: true,
+        secure: true,
+        // This removes '/api' from the URL before sending it to Render.
+        // Example: localhost:5173/api/login.php -> attendance-et67.../login.php
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+    },
+  },
 });
