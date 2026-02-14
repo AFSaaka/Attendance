@@ -126,18 +126,24 @@ const StudentDashboard = ({
   useEffect(() => {
     const runSync = async () => {
       if (isSyncing || !navigator.onLine) return;
-      const pending = localStorage.getItem("pending_attendance");
-      if (!pending) return;
 
-      setIsSyncing(true);
+      const pendingRaw = localStorage.getItem("pending_attendance");
+      if (!pendingRaw) return;
+
       try {
+        const pendingArray = JSON.parse(pendingRaw);
+        if (pendingArray.length === 0) return; // Don't trigger if array is empty
+
+        setIsSyncing(true);
         const result = await syncOfflineAttendance();
+
         if (result.success && result.count > 0) {
           setAttendanceStatus({
             message: `Synced ${result.count} records!`,
             type: "success",
           });
           checkStatus();
+          // Clear local cache for this user specifically
           setTimeout(
             () => setAttendanceStatus({ message: "", type: "" }),
             4000,
@@ -210,6 +216,7 @@ const StudentDashboard = ({
       latitude: location.lat,
       longitude: location.lng,
       accuracy: location.accuracy, // Send accuracy to server for backend auditing
+      is_mocked: location.is_mocked || location.accuracy === 0,
       user_id: user?.id || user?.user_id,
       enrollment_id: placement?.id,
       community_id: placement?.community_id,

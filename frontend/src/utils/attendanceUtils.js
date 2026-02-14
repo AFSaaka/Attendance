@@ -7,11 +7,15 @@ import axios from "../api/axios";
 export const saveAttendanceOffline = (data) => {
   const queue = JSON.parse(localStorage.getItem("pending_attendance") || "[]");
 
+  // Ensure security flags are explicit so the backend doesn't reject them
   const offlineRecord = {
     ...data,
     offline_id: Date.now(),
-    captured_at: new Date().toISOString(),
+    captured_at: data.captured_at || new Date().toISOString(),
     is_offline: true,
+    // Ensure these exist for the hardened PHP backend
+    is_mocked: data.is_mocked || false,
+    accuracy: data.accuracy || null,
   };
 
   queue.push(offlineRecord);
@@ -26,7 +30,6 @@ export const syncOfflineAttendance = async () => {
   const queue = JSON.parse(localStorage.getItem("pending_attendance") || "[]");
   if (queue.length === 0) return { success: true, count: 0 };
 
-  // Capture the IDs we are about to send
   const attemptIds = queue.map((item) => item.offline_id);
 
   try {
@@ -34,16 +37,15 @@ export const syncOfflineAttendance = async () => {
       records: queue,
     });
 
-    // If status is success, we clear the queue regardless of 'synced' vs 'skipped'
+    // Check for success status from your PHP script
     if (response.data.status === "success") {
       const currentQueue = JSON.parse(
-        localStorage.getItem("pending_attendance") || "[]"
+        localStorage.getItem("pending_attendance") || "[]",
       );
 
-      // Only keep items that were NOT part of this sync attempt
-      // This prevents deleting items that might have been added while the sync was running
+      // Thread-safe removal: only remove the IDs we successfully sent
       const remaining = currentQueue.filter(
-        (item) => !attemptIds.includes(item.offline_id)
+        (item) => !attemptIds.includes(item.offline_id),
       );
 
       if (remaining.length > 0) {
@@ -55,24 +57,29 @@ export const syncOfflineAttendance = async () => {
       return {
         success: true,
         count: response.data.details?.synced || 0,
-        skipped: response.data.details?.skipped || 0,
+        failed: response.data.details?.failed || 0,
       };
     }
     return { success: false, message: response.data.message };
   } catch (err) {
+    // If the server returns 401, the user's session expired while offline
+    if (err.response?.status === 401) {
+      return {
+        success: false,
+        message: "Session expired. Please log in again.",
+      };
+    }
     console.error("Sync failed:", err);
-    return { success: false, message: "Network still unavailable" };
+    return { success: false, message: "Network error" };
   }
 };
 
 /**
- * Calculates current week and day based on start date
- * FIXED: Renamed to match Dashboard import and fixed timezone bug
+ * Progress calculation with timezone safety
  */
 export const calculateProgramProgress = (startDateStr) => {
   if (!startDateStr) return { week: 1, day: 1 };
 
-  // Manual splitting prevents the 'day-drifting' timezone bug
   const [year, month, day] = startDateStr.split("-").map(Number);
   const start = new Date(year, month - 1, day);
   start.setHours(0, 0, 0, 0);
@@ -83,7 +90,6 @@ export const calculateProgramProgress = (startDateStr) => {
   const diffTime = now.getTime() - start.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-  // If before start date, return week 1, day 1
   if (diffDays < 0) return { week: 1, day: 1 };
 
   return {
