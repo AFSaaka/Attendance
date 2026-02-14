@@ -188,10 +188,28 @@ const StudentDashboard = ({
 
   const confirmAttendanceSubmission = async () => {
     setIsSubmitting(true);
+
+    // --- ANTI-SPOOFING LAYER ---
+    const isMocked = location.isMocked || location.accuracy === 0;
+    const isSuspiciouslyAccurate =
+      location.accuracy > 0 && location.accuracy < 1; // Real GPS rarely has < 1m accuracy indoors/rural
+
+    if (isMocked || isSuspiciouslyAccurate) {
+      setAttendanceStatus({
+        message:
+          "Security Alert: Virtual/Mock location detected. Please use a physical device.",
+        type: "error",
+      });
+      setIsSubmitting(false);
+      return false;
+    }
+    // ---------------------------
+
     const progress = calculateProgramProgress(placement?.start_date);
     const data = {
       latitude: location.lat,
       longitude: location.lng,
+      accuracy: location.accuracy, // Send accuracy to server for backend auditing
       user_id: user?.id || user?.user_id,
       enrollment_id: placement?.id,
       community_id: placement?.community_id,
@@ -200,6 +218,8 @@ const StudentDashboard = ({
       week_number: progress.week,
       day_number: progress.day,
       captured_at: new Date().toISOString(),
+      // Add a simple integrity hash (optional)
+      device_id: localStorage.getItem("student_device_id"),
     };
 
     try {
@@ -215,10 +235,14 @@ const StudentDashboard = ({
       setAttendanceStatus({ message: resp.data.message, type: "error" });
       return false;
     } catch (err) {
+      // If offline, we still save, but we mark it for manual review on the dashboard
       if (!err.response) {
-        saveAttendanceOffline(data);
+        saveAttendanceOffline({ ...data, is_offline: true });
         setHasSignedToday(true);
-        setAttendanceStatus({ message: "Saved offline.", type: "info" });
+        setAttendanceStatus({
+          message: "Saved offline. Will sync later.",
+          type: "info",
+        });
         return true;
       }
       setAttendanceStatus({ message: "Submission failed", type: "error" });
