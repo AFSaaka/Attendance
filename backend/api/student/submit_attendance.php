@@ -12,9 +12,7 @@ if (empty($records) || (isset($records[0]) && empty($records[0]))) {
     exit;
 }
 
-$syncedCount = 0; 
-$skippedCount = 0;
-$lastRecordId = null; // Variable to hold the UUID
+$syncedCount = 0; $skippedCount = 0;
 
 try {
     $pdo->beginTransaction();
@@ -26,6 +24,7 @@ try {
         $captured_at = $data['captured_at'] ?? date('Y-m-d H:i:s');
         $att_date = date('Y-m-d', strtotime($captured_at));
         
+        // LOGIC: If incoming data is flagged offline, we mark DB as synced+offline
         $incoming_offline = (isset($data['is_offline']) && ($data['is_offline'] === true || $data['is_offline'] === 'true'));
         $db_is_offline = $incoming_offline ? 'true' : 'false';
         $db_synced = $incoming_offline ? 'true' : 'false';
@@ -52,15 +51,13 @@ try {
             if ($dist > 500) { $is_suspicious = true; $reason = "Distance: " . round($dist) . "m"; }
         }
 
-        // CHANGE 1: We hardcode 'pending' for the initial submission status
-        // CHANGE 2: Added RETURNING id at the end
         $sql = "INSERT INTO public.attendance_records (
                     user_id, enrollment_id, community_id, session_id,
                     attendance_date, status, latitude, longitude, accuracy,
                     week_number, day_number, location_geom, 
                     is_suspicious, suspicious_reason, is_offline, captured_at, synced
                 ) VALUES (
-                    :uid, :eid, :cid, :sid, :date, 'pending', :lat, :lng, :acc, :wk, :day,
+                    :uid, :eid, :cid, :sid, :date, :status, :lat, :lng, :acc, :wk, :day,
                     ST_SetSRID(ST_MakePoint(:lng_g, :lat_g), 4326)::geography,
                     :susp, :reason, :off, :cap, :synced
                 ) 
@@ -68,17 +65,17 @@ try {
                 DO UPDATE SET 
                     synced = EXCLUDED.synced,
                     is_offline = EXCLUDED.is_offline,
+                    status = EXCLUDED.status,
                     is_suspicious = EXCLUDED.is_suspicious,
                     suspicious_reason = EXCLUDED.suspicious_reason,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE public.attendance_records.synced = FALSE
-                RETURNING id"; 
+                WHERE public.attendance_records.synced = FALSE"; // Only update if not already synced
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
             'uid' => $currentUser['id'], 'eid' => $data['enrollment_id'],
             'cid' => $meta['community_id'], 'sid' => $meta['session_id'],
-            'date' => $att_date,
+            'date' => $att_date, 'status' => $data['status'] ?? 'present',
             'lat' => $u_lat, 'lng' => $u_lng, 'acc' => $u_acc,
             'wk' => $data['week_number'] ?? null, 'day' => $data['day_number'] ?? null,
             'lng_g' => $u_lng, 'lat_g' => $u_lat,
@@ -86,22 +83,12 @@ try {
             'off' => $db_is_offline, 'cap' => $captured_at, 'synced' => $db_synced
         ]);
 
-        // Capture the UUID from the RETURNING clause
-        $lastRecordId = $stmt->fetchColumn();
-
         if ($stmt->rowCount() > 0) $syncedCount++;
         else $skippedCount++;
     }
 
     $pdo->commit();
-    
-    // Return the record_id (UUID) so React can use it for verification later
-    echo json_encode([
-        "status" => "success", 
-        "record_id" => $lastRecordId,
-        "details" => ["synced" => $syncedCount, "skipped" => $skippedCount]
-    ]);
-
+    echo json_encode(["status" => "success", "details" => ["synced" => $syncedCount, "skipped" => $skippedCount]]);
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
