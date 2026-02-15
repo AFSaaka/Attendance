@@ -33,17 +33,20 @@ export const syncOfflineAttendance = async () => {
   const attemptIds = queue.map((item) => item.offline_id);
 
   try {
-    const response = await axios.post("student/sync_attendance", {
+    // IMPORTANT: Ensure the endpoint matches your new PHP file name
+    const response = await axios.post("student/submit_attendance", {
       records: queue,
     });
 
-    // Check for success status from your PHP script
-    if (response.data.status === "success") {
+    // Only remove from localStorage if the server explicitly confirms sync count
+    if (
+      response.data.status === "success" &&
+      response.data.details?.synced >= 0
+    ) {
       const currentQueue = JSON.parse(
         localStorage.getItem("pending_attendance") || "[]",
       );
 
-      // Thread-safe removal: only remove the IDs we successfully sent
       const remaining = currentQueue.filter(
         (item) => !attemptIds.includes(item.offline_id),
       );
@@ -56,20 +59,12 @@ export const syncOfflineAttendance = async () => {
 
       return {
         success: true,
-        count: response.data.details?.synced || 0,
-        failed: response.data.details?.failed || 0,
+        count: response.data.details.synced,
       };
     }
-    return { success: false, message: response.data.message };
+    return { success: false, message: "Server rejected sync format" };
   } catch (err) {
-    // If the server returns 401, the user's session expired while offline
-    if (err.response?.status === 401) {
-      return {
-        success: false,
-        message: "Session expired. Please log in again.",
-      };
-    }
-    console.error("Sync failed:", err);
+    console.error("Sync failed:", err.response?.data || err.message);
     return { success: false, message: "Network error" };
   }
 };
