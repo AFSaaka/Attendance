@@ -1,9 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import Navbar from "./navbar";
 import Footer from "./footer";
 import axios from "../api/axios";
 import DashboardHero from "./DashboardHero";
 import AttendanceModal from "./AttendanceModal";
+import VerificationModal from "./VerificationModal";
 import {
   saveAttendanceOffline,
   syncOfflineAttendance,
@@ -41,8 +48,17 @@ const StudentDashboard = ({
     message: "",
     type: "",
   });
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
 
-  // 2. CALCULATIONS (Must be defined before functions that use them)
+  const syncLock = useRef(false);
+  const timerRef = useRef(null);
+
+  const studentId = useMemo(
+    () => user?.uin || user?.id || user?.user_id,
+    [user],
+  );
+
+  // 2. CALCULATIONS
   const distance = useMemo(() => {
     if (location.lat && location.lng && placement?.community_lat) {
       return calculateDistance(
@@ -69,113 +85,267 @@ const StudentDashboard = ({
     return checkIsInRange(distance, 500);
   }, [distance, placement?.coordinate_check]);
 
-  // 3. API DATA FETCHING
-  const checkStatus = useCallback(async () => {
-    if (!user?.uin) return;
-    try {
-      const response = await axios.get(
-        `student/check_daily_status?user_id=${user.uin}`,
+  // 3. LOGIC FUNCTIONS
+  const startVerificationTimer = useCallback(() => {
+    if (localStorage.getItem("verification_completed") === "true") return;
+
+    let challengeTime = localStorage.getItem("challenge_time");
+    if (!challengeTime) {
+      const start = new Date().setHours(14, 0, 0, 0);
+      const end = new Date().setHours(18, 0, 0, 0);
+      // Ensure challenge is at least 1 min from now or random window
+      challengeTime = Math.max(
+        Date.now() + 60000,
+        start + Math.random() * (end - start),
       );
-      setHasSignedToday(response.data.signed);
-      localStorage.setItem(
-        `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
-        JSON.stringify(response.data.signed),
-      );
-    } catch (err) {
-      if (!navigator.onLine) {
-        const cached = localStorage.getItem(
-          `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
-        );
-        if (cached !== null) setHasSignedToday(JSON.parse(cached));
-      }
+      localStorage.setItem("challenge_time", challengeTime);
     }
-  }, [user?.uin]);
+
+    const delay = challengeTime - Date.now();
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    if (delay <= 0) {
+      setIsVerifyModalOpen(true);
+    } else {
+      timerRef.current = setTimeout(() => {
+        setIsVerifyModalOpen(true);
+      }, delay);
+    }
+  }, []);
 
   const getPlacementData = useCallback(async () => {
-    if (!user?.uin) return;
+    if (!studentId) return;
     try {
       const response = await axios.get("student/get_placement");
       if (response.data.status === "success") {
         setPlacement(response.data.placement);
         localStorage.setItem(
-          `placement_${user.uin}`,
+          `placement_${studentId}`,
           JSON.stringify(response.data.placement),
         );
       }
     } catch (err) {
       if (err.response?.status === 401) onLogout();
       else if (!navigator.onLine) {
-        const cached = localStorage.getItem(`placement_${user.uin}`);
+        const cached = localStorage.getItem(`placement_${studentId}`);
         if (cached) setPlacement(JSON.parse(cached));
       }
     } finally {
       setLoadingPlacement(false);
     }
-  }, [user?.uin, onLogout]);
+  }, [studentId, onLogout]);
+
+  const checkStatus = useCallback(async () => {
+    if (!studentId) return;
+    const today = new Date().toISOString().split("T")[0];
+    try {
+      const response = await axios.get(
+        `student/check_daily_status?user_id=${studentId}`,
+      );
+      setHasSignedToday(response.data.signed);
+      localStorage.setItem(
+        `signed_${studentId}_${today}`,
+        JSON.stringify(response.data.signed),
+      );
+    } catch (err) {
+      const cached = localStorage.getItem(`signed_${studentId}_${today}`);
+      if (cached !== null) setHasSignedToday(JSON.parse(cached));
+    }
+  }, [studentId]);
 
   // 4. EFFECTS
+
+  // Initialization & Daily Reset
   useEffect(() => {
     document.title = "TTFPP | Student Dashboard";
-    if (user?.uin) {
+    const today = new Date().toISOString().split("T")[0];
+
+    if (localStorage.getItem("last_access_date") !== today) {
+      localStorage.removeItem("verification_completed");
+      localStorage.removeItem("challenge_time");
+      localStorage.setItem("last_access_date", today);
+    }
+
+    if (studentId) {
       checkStatus();
       getPlacementData();
     }
-  }, [user?.uin, checkStatus, getPlacementData]);
 
-  // Offline Sync Effect
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [studentId, checkStatus, getPlacementData]);
+
+  // Verification Timer Trigger
   useEffect(() => {
-    const runSync = async () => {
-      if (isSyncing || !navigator.onLine) return;
+    if (hasSignedToday) {
+      startVerificationTimer();
+    }
+  }, [hasSignedToday, startVerificationTimer]);
 
-      const pendingRaw = localStorage.getItem("pending_attendance");
-      if (!pendingRaw) return;
-
+  // Offline Sync
+  useEffect(() => {
+    const handleSync = async () => {
+      if (syncLock.current || !navigator.onLine) return;
+      syncLock.current = true;
+      setIsSyncing(true);
       try {
-        const pendingArray = JSON.parse(pendingRaw);
-        if (pendingArray.length === 0) return; // Don't trigger if array is empty
-
-        setIsSyncing(true);
-        const result = await syncOfflineAttendance();
-
-        if (result.success && result.count > 0) {
-          setAttendanceStatus({
-            message: `Synced ${result.count} records!`,
-            type: "success",
-          });
-          checkStatus();
-          // Clear local cache for this user specifically
-          setTimeout(
-            () => setAttendanceStatus({ message: "", type: "" }),
-            4000,
-          );
+        await syncOfflineAttendance();
+        const verifs = JSON.parse(
+          localStorage.getItem("pending_verifications") || "[]",
+        );
+        if (verifs.length > 0) {
+          const serverId = localStorage.getItem("last_attendance_id");
+          for (const v of verifs) {
+            const data = {
+              ...v,
+              attendance_id: v.attendance_id?.startsWith("offline")
+                ? serverId
+                : v.attendance_id,
+            };
+            await axios.post("student/verify_location", data);
+          }
+          localStorage.removeItem("pending_verifications");
         }
+        await checkStatus();
       } catch (e) {
         console.error("Sync failed", e);
       } finally {
         setIsSyncing(false);
+        syncLock.current = false;
       }
     };
 
-    window.addEventListener("online", runSync);
-    runSync();
-    return () => window.removeEventListener("online", runSync);
-  }, [isSyncing, checkStatus]);
+    window.addEventListener("online", handleSync);
+    handleSync();
+    return () => window.removeEventListener("online", handleSync);
+  }, [checkStatus]);
 
-  // 5. EVENT HANDLERS
-  const handleRefreshClick = () => {
-    setIsRefreshing(true);
-    onRefreshGPS();
-    setTimeout(() => setIsRefreshing(false), 1500);
+  // 5. HANDLERS
+  const confirmAttendanceSubmission = async () => {
+    setIsSubmitting(true);
+    const isMocked = location.isMocked || location.accuracy === 0;
+    const isSuspiciouslyAccurate =
+      location.accuracy > 0 && location.accuracy < 1;
+
+    if (isMocked || isSuspiciouslyAccurate) {
+      setAttendanceStatus({
+        message:
+          "Security Alert: Virtual/Mock location detected. Please use a physical device.",
+        type: "error",
+      });
+      setIsSubmitting(false);
+      return false;
+    }
+
+    const progress = calculateProgramProgress(placement?.start_date);
+    const data = {
+      latitude: location.lat,
+      longitude: location.lng,
+      accuracy: location.accuracy,
+      is_mocked: isMocked,
+      user_id: studentId,
+      enrollment_id: placement?.id,
+      community_id: placement?.community_id,
+      session_id: placement?.session_id,
+      status: "present",
+      week_number: progress.week,
+      day_number: progress.day,
+      captured_at: new Date().toISOString(),
+      device_id: localStorage.getItem("student_device_id"),
+    };
+
+    try {
+      const resp = await axios.post("student/submit_attendance", data);
+      if (resp.data.status === "success") {
+        setHasSignedToday(true);
+        if (resp.data.record_id)
+          localStorage.setItem("last_attendance_id", resp.data.record_id);
+
+        localStorage.removeItem("verification_completed");
+        localStorage.removeItem("challenge_time");
+
+        setAttendanceStatus({
+          message:
+            "Attendance recorded! Look out for a verification prompt later.",
+          type: "success",
+        });
+        return true;
+      }
+      setAttendanceStatus({ message: resp.data.message, type: "error" });
+      return false;
+    } catch (err) {
+      if (!err.response) {
+        const offlineId = `offline_${Date.now()}`;
+        localStorage.setItem("last_attendance_id", offlineId);
+        saveAttendanceOffline({
+          ...data,
+          is_offline: true,
+          offline_id: offlineId,
+        });
+        setHasSignedToday(true);
+        setAttendanceStatus({
+          message: "Saved offline. Will sync later.",
+          type: "info",
+        });
+        return true;
+      }
+      setAttendanceStatus({ message: "Submission failed", type: "error" });
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSecondaryVerification = async () => {
+    setIsSubmitting(true);
+    const attendanceId = localStorage.getItem("last_attendance_id");
+    const data = {
+      attendance_id: attendanceId,
+      latitude: location.lat,
+      longitude: location.lng,
+      verified_at: new Date().toISOString(),
+    };
+
+    try {
+      if (
+        navigator.onLine &&
+        attendanceId &&
+        !attendanceId.startsWith("offline_")
+      ) {
+        const resp = await axios.post("student/verify_location", data);
+        if (resp.data.status === "success") {
+          setAttendanceStatus({
+            message: "Presence Verified!",
+            type: "success",
+          });
+          localStorage.setItem("verification_completed", "true");
+          setIsVerifyModalOpen(false);
+          return;
+        }
+      }
+
+      const pendingVerifs = JSON.parse(
+        localStorage.getItem("pending_verifications") || "[]",
+      );
+      pendingVerifs.push(data);
+      localStorage.setItem(
+        "pending_verifications",
+        JSON.stringify(pendingVerifs),
+      );
+      setAttendanceStatus({
+        message: "Verified offline. Syncing later.",
+        type: "info",
+      });
+      localStorage.setItem("verification_completed", "true");
+      setIsVerifyModalOpen(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAttendance = () => {
-    if (hasSignedToday) {
-      setAttendanceStatus({
-        message: "Attendance already recorded.",
-        type: "info",
-      });
-      return;
-    }
+    if (hasSignedToday) return;
     if (
       placement?.coordinate_check !== false &&
       distance !== null &&
@@ -190,73 +360,6 @@ const StudentDashboard = ({
     }
     setAttendanceStatus({ message: "", type: "" });
     setIsModalOpen(true);
-  };
-
-  const confirmAttendanceSubmission = async () => {
-    setIsSubmitting(true);
-
-    // --- ANTI-SPOOFING LAYER ---
-    const isMocked = location.isMocked || location.accuracy === 0;
-    const isSuspiciouslyAccurate =
-      location.accuracy > 0 && location.accuracy < 1; // Real GPS rarely has < 1m accuracy indoors/rural
-
-    if (isMocked || isSuspiciouslyAccurate) {
-      setAttendanceStatus({
-        message:
-          "Security Alert: Virtual/Mock location detected. Please use a physical device.",
-        type: "error",
-      });
-      setIsSubmitting(false);
-      return false;
-    }
-    // ---------------------------
-
-    const progress = calculateProgramProgress(placement?.start_date);
-    const data = {
-      latitude: location.lat,
-      longitude: location.lng,
-      accuracy: location.accuracy, // Send accuracy to server for backend auditing
-      is_mocked: location.is_mocked || location.accuracy === 0,
-      user_id: user?.id || user?.user_id,
-      enrollment_id: placement?.id,
-      community_id: placement?.community_id,
-      session_id: placement?.session_id,
-      status: "present",
-      week_number: progress.week,
-      day_number: progress.day,
-      captured_at: new Date().toISOString(),
-      // Add a simple integrity hash (optional)
-      device_id: localStorage.getItem("student_device_id"),
-    };
-
-    try {
-      const resp = await axios.post("student/submit_attendance", data);
-      if (resp.data.status === "success") {
-        setHasSignedToday(true);
-        setAttendanceStatus({
-          message: "Verified successfully!",
-          type: "success",
-        });
-        return true;
-      }
-      setAttendanceStatus({ message: resp.data.message, type: "error" });
-      return false;
-    } catch (err) {
-      // If offline, we still save, but we mark it for manual review on the dashboard
-      if (!err.response) {
-        saveAttendanceOffline({ ...data, is_offline: true });
-        setHasSignedToday(true);
-        setAttendanceStatus({
-          message: "Saved offline. Will sync later.",
-          type: "info",
-        });
-        return true;
-      }
-      setAttendanceStatus({ message: "Submission failed", type: "error" });
-      return false;
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const fullName = placement?.full_name || user?.name || "Student";
@@ -274,7 +377,7 @@ const StudentDashboard = ({
         <DashboardHero
           fullName={loadingPlacement ? "..." : fullName}
           academicLevel={loadingPlacement ? "..." : placement?.level || "N/A"}
-          uin={user?.uin}
+          uin={studentId}
           role={user?.role}
           location={location}
           onAttendance={handleAttendance}
@@ -282,7 +385,7 @@ const StudentDashboard = ({
           status={attendanceStatus}
           isInRange={isInRange}
           distance={distance}
-          buttonText={hasSignedToday ? "Submitted" : "Take Attendance "}
+          buttonText={hasSignedToday ? "Submitted" : "Take Attendance"}
           buttonDisabled={
             hasSignedToday || !location.lat || !location.lng || isSubmitting
           }
@@ -294,6 +397,16 @@ const StudentDashboard = ({
           onClose={() => setIsModalOpen(false)}
           onSubmit={confirmAttendanceSubmission}
           placement={placement}
+          isSubmitting={isSubmitting}
+        />
+
+        <VerificationModal
+          isOpen={isVerifyModalOpen}
+          onClose={() => setIsVerifyModalOpen(false)}
+          onVerify={handleSecondaryVerification}
+          location={location}
+          distance={distance}
+          isInRange={isInRange}
           isSubmitting={isSubmitting}
         />
 
@@ -373,7 +486,14 @@ const StudentDashboard = ({
                     <span className="pulse-dot"></span> LIVE
                   </div>
                 )}
-                <button onClick={handleRefreshClick} style={styles.refreshBtn}>
+                <button
+                  onClick={() => {
+                    setIsRefreshing(true);
+                    onRefreshGPS();
+                    setTimeout(() => setIsRefreshing(false), 1500);
+                  }}
+                  style={styles.refreshBtn}
+                >
                   <RefreshCw
                     size={16}
                     className={isRefreshing ? "spin-animation" : ""}
@@ -460,8 +580,6 @@ const StudentDashboard = ({
   );
 };
 
-// ... keep your DetailRow and styles exactly as they were
-
 const DetailRow = ({ icon, label, value }) => (
   <div style={styles.detailRow}>
     <div style={{ marginRight: "15px", color: "#64748b" }}>{icon}</div>
@@ -472,7 +590,7 @@ const DetailRow = ({ icon, label, value }) => (
   </div>
 );
 
-// --- Modular Styles Object (Production Ready) ---
+// ... keep your styles object exactly as it was ...
 const styles = {
   container: {
     minHeight: "100vh",
@@ -489,7 +607,6 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    transition: "opacity 0.3s ease-in-out", // Smooth entry
   },
   syncOverlay: {
     position: "fixed",
@@ -504,7 +621,6 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     zIndex: 1000,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
   },
   grid: {
     display: "grid",
@@ -552,8 +668,6 @@ const styles = {
     color: "#64748b",
     display: "flex",
     alignItems: "center",
-    transition: "all 0.2s ease",
-    ":hover": { backgroundColor: "#e2e8f0" },
   },
   detailLabel: {
     display: "block",
@@ -583,15 +697,8 @@ const styles = {
     fontWeight: "bold",
     letterSpacing: "0.5px",
   },
-  coordLabel1: {
-    color: "#030303",
-    fontWeight: "bold",
-  },
-  coordLabel2: {
-    color: "#64748b",
-    fontWeight: "bold",
-  },
-  // Ensure coordBox has a transition for a smooth feel
+  coordLabel1: { color: "#030303", fontWeight: "bold" },
+  coordLabel2: { color: "#64748b", fontWeight: "bold" },
   coordBox: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
@@ -601,7 +708,6 @@ const styles = {
     border: "1px solid #e2e8f0",
     gap: "10px",
     minHeight: "55px",
-    transition: "all 0.3s ease",
   },
   gpsBadge: {
     display: "flex",
@@ -619,10 +725,7 @@ const styles = {
     fontWeight: "600",
     textTransform: "uppercase",
   },
-  coordDivider: {
-    borderLeft: "1px solid #cbd5e1",
-    paddingLeft: "15px",
-  },
+  coordDivider: { borderLeft: "1px solid #cbd5e1", paddingLeft: "15px" },
   distanceBadge: {
     display: "flex",
     alignItems: "center",
@@ -643,13 +746,6 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     fontSize: "14px",
-  },
-  pulseContainer: {
-    width: "24px",
-    height: "24px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
   },
 };
 
