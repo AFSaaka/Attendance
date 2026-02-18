@@ -79,13 +79,37 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!filters.session_id) return alert("Please select an Academic Session");
+
     setIsExporting(true);
-    const params = new URLSearchParams(filters).toString();
-    const downloadUrl = `${axios.defaults.baseURL}/admin/export-attendance?${params}`;
-    window.location.href = downloadUrl;
-    setTimeout(() => setIsExporting(false), 3000);
+    try {
+      const res = await axios.get("/admin/export-attendance", {
+        params: filters,
+        responseType: "blob", // CRITICAL: Tells Axios to handle binary data (ZIP)
+      });
+
+      // Create a physical link in memory for the file
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+
+      // Get filename from response header or use default
+      const filename = `Attendance_Export_${new Date().toISOString().slice(0, 10)}.zip`;
+      link.setAttribute("download", filename);
+
+      document.body.appendChild(link);
+      link.click(); // Trigger the download
+
+      // Cleanup
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert(err.response?.data?.error || "Export failed. Check server logs.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (!isOpen) return null;
