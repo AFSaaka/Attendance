@@ -82,7 +82,6 @@ function validate_file_upload($file, $allowed_extensions = [], $max_size_mb = 5)
     if (function_exists('finfo_file')) {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime = finfo_file($finfo, $file['tmp_name']);
-        finfo_close($finfo);
         
         // Allow common spreadsheet MIME types
         $allowed_mimes = [
