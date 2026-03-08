@@ -26,10 +26,20 @@ export default function useAdminStats() {
   }, []);
 
   useEffect(() => {
-    fetchStats();
-    const id = setInterval(() => fetchStats(true), 60000);
-    return () => clearInterval(id);
-  }, [fetchStats]);
+    let isMounted = true;
+
+    const load = async () => {
+      if (isMounted) await fetchStats();
+    };
+
+    load();
+    const id = setInterval(() => load(), 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(id);
+    };
+  }, []);
 
   return { stats, isRefreshing, error };
 }
