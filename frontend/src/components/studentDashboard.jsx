@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import Navbar from "./navbar";
 import Footer from "./footer";
 import axios from "../api/axios";
@@ -41,6 +47,8 @@ const StudentDashboard = ({
     message: "",
     type: "",
   });
+
+  const isSyncingRef = useRef(false);
 
   // 2. CALCULATIONS (Must be defined before functions that use them)
   const distance = useMemo(() => {
@@ -125,7 +133,7 @@ const StudentDashboard = ({
   // Offline Sync Effect
   useEffect(() => {
     const runSync = async () => {
-      if (isSyncing || !navigator.onLine) return;
+      if (isSyncingRef.current || !navigator.onLine) return;
 
       const pendingRaw = localStorage.getItem("pending_attendance");
       if (!pendingRaw) return;
@@ -135,6 +143,7 @@ const StudentDashboard = ({
         if (pendingArray.length === 0) return; // Don't trigger if array is empty
 
         setIsSyncing(true);
+        isSyncingRef.current = true;
         const result = await syncOfflineAttendance();
 
         if (result.success && result.count > 0) {
@@ -153,13 +162,14 @@ const StudentDashboard = ({
         console.error("Sync failed", e);
       } finally {
         setIsSyncing(false);
+        isSyncingRef.current = false;
       }
     };
 
     window.addEventListener("online", runSync);
     runSync();
     return () => window.removeEventListener("online", runSync);
-  }, [isSyncing, checkStatus]);
+  }, [checkStatus]);
 
   // 5. EVENT HANDLERS
   const handleRefreshClick = () => {

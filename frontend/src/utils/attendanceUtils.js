@@ -13,6 +13,7 @@ export const saveAttendanceOffline = (data) => {
     offline_id: Date.now(),
     captured_at: data.captured_at || new Date().toISOString(),
     is_offline: true,
+    retryCount: 0,
     // Ensure these exist for the hardened PHP backend
     is_mocked: data.is_mocked || false,
     accuracy: data.accuracy || null,
@@ -65,6 +66,24 @@ export const syncOfflineAttendance = async () => {
     return { success: false, message: "Server rejected sync format" };
   } catch (err) {
     console.error("Sync failed:", err.response?.data || err.message);
+
+    // Handle retries: increment retryCount for each failed record
+    const currentQueue = JSON.parse(
+      localStorage.getItem("pending_attendance") || "[]",
+    );
+    const updatedQueue = currentQueue
+      .map((record) => ({
+        ...record,
+        retryCount: record.retryCount + 1,
+      }))
+      .filter((record) => record.retryCount < 3);
+
+    if (updatedQueue.length > 0) {
+      localStorage.setItem("pending_attendance", JSON.stringify(updatedQueue));
+    } else {
+      localStorage.removeItem("pending_attendance");
+    }
+
     return { success: false, message: "Network error" };
   }
 };
