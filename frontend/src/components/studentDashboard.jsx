@@ -133,32 +133,31 @@ const StudentDashboard = ({
     [user?.uin, onLogout],
   );
 
-  // Restore cached data on mount (before API calls)
-  useEffect(() => {
-    if (!user?.uin) return;
-
-    // Restore placement from cache
-    const cachedPlacement = localStorage.getItem(`placement_${user.uin}`);
-    if (cachedPlacement) {
-      setPlacement(JSON.parse(cachedPlacement));
-    }
-
-    // Restore signed status from today's cache
-    const today = new Date().toISOString().split("T")[0];
-    const cachedSigned = localStorage.getItem(`signed_${user.uin}_${today}`);
-    if (cachedSigned !== null) {
-      setHasSignedToday(JSON.parse(cachedSigned));
-    }
-  }, [user?.uin]);
-
-  // 4. EFFECTS
+  // 4. EFFECTS (Cache restore + API fetch merged)
   useEffect(() => {
     document.title = "TTFPP | Student Dashboard";
     const controller = new AbortController();
 
     if (user?.uin) {
-      checkStatus(controller.signal);
-      getPlacementData(controller.signal);
+      // Step 1: Restore from cache immediately
+      const cachedPlacement = localStorage.getItem(`placement_${user.uin}`);
+      if (cachedPlacement) {
+        setPlacement(JSON.parse(cachedPlacement));
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const cachedSigned = localStorage.getItem(`signed_${user.uin}_${today}`);
+      if (cachedSigned !== null) {
+        setHasSignedToday(JSON.parse(cachedSigned));
+      }
+
+      // Step 2: Only fetch from API if online
+      if (navigator.onLine) {
+        checkStatus(controller.signal);
+        getPlacementData(controller.signal);
+      } else {
+        setLoadingPlacement(false);
+      }
     }
 
     return () => controller.abort();

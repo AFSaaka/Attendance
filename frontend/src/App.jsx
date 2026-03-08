@@ -2,7 +2,7 @@ import { registerSW } from "virtual:pwa-register";
 registerSW({ immediate: true });
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import axios, { setCsrfToken } from "./api/axios";
+import axios, { setCsrfToken, isCancel } from "./api/axios";
 import udsLogo from "./assets/udslogo.ico";
 import InputField from "./components/inputField";
 import PrimaryButton from "./components/primaryButton";
@@ -163,7 +163,7 @@ function App() {
           setCsrfToken(response.data.csrf_token);
         }
       } catch (error) {
-        if (axios.isCancel(error)) return;
+        if (isCancel(error)) return;
         const status = error.response?.status;
         if (status === 401 || status === 403) {
           handleLogout();
