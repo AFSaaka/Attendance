@@ -78,56 +78,71 @@ const StudentDashboard = ({
   }, [distance, placement?.coordinate_check]);
 
   // 3. API DATA FETCHING
-  const checkStatus = useCallback(async () => {
-    if (!user?.uin) return;
-    try {
-      const response = await axios.get(
-        `student/check_daily_status?user_id=${user.uin}`,
-      );
-      setHasSignedToday(response.data.signed);
-      localStorage.setItem(
-        `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
-        JSON.stringify(response.data.signed),
-      );
-    } catch (err) {
-      if (!navigator.onLine) {
-        const cached = localStorage.getItem(
-          `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
+  const checkStatus = useCallback(
+    async (signal) => {
+      if (!user?.uin) return;
+      try {
+        const response = await axios.get(
+          `student/check_daily_status?user_id=${user.uin}`,
+          { signal },
         );
-        if (cached !== null) setHasSignedToday(JSON.parse(cached));
-      }
-    }
-  }, [user?.uin]);
-
-  const getPlacementData = useCallback(async () => {
-    if (!user?.uin) return;
-    try {
-      const response = await axios.get("student/get_placement");
-      if (response.data.status === "success") {
-        setPlacement(response.data.placement);
+        setHasSignedToday(response.data.signed);
         localStorage.setItem(
-          `placement_${user.uin}`,
-          JSON.stringify(response.data.placement),
+          `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
+          JSON.stringify(response.data.signed),
         );
+      } catch (err) {
+        if (axios.isCancel(err)) return;
+        if (!navigator.onLine) {
+          const cached = localStorage.getItem(
+            `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
+          );
+          if (cached !== null) setHasSignedToday(JSON.parse(cached));
+        }
       }
-    } catch (err) {
-      if (err.response?.status === 401) onLogout();
-      else if (!navigator.onLine) {
-        const cached = localStorage.getItem(`placement_${user.uin}`);
-        if (cached) setPlacement(JSON.parse(cached));
+    },
+    [user?.uin],
+  );
+
+  const getPlacementData = useCallback(
+    async (signal) => {
+      if (!user?.uin) return;
+      try {
+        const response = await axios.get("student/get_placement", {
+          signal,
+        });
+        if (response.data.status === "success") {
+          setPlacement(response.data.placement);
+          localStorage.setItem(
+            `placement_${user.uin}`,
+            JSON.stringify(response.data.placement),
+          );
+        }
+      } catch (err) {
+        if (axios.isCancel(err)) return;
+        if (err.response?.status === 401) onLogout();
+        else if (!navigator.onLine) {
+          const cached = localStorage.getItem(`placement_${user.uin}`);
+          if (cached) setPlacement(JSON.parse(cached));
+        }
+      } finally {
+        setLoadingPlacement(false);
       }
-    } finally {
-      setLoadingPlacement(false);
-    }
-  }, [user?.uin, onLogout]);
+    },
+    [user?.uin, onLogout],
+  );
 
   // 4. EFFECTS
   useEffect(() => {
     document.title = "TTFPP | Student Dashboard";
+    const controller = new AbortController();
+
     if (user?.uin) {
-      checkStatus();
-      getPlacementData();
+      checkStatus(controller.signal);
+      getPlacementData(controller.signal);
     }
+
+    return () => controller.abort();
   }, [user?.uin, checkStatus, getPlacementData]);
 
   // Offline Sync Effect

@@ -144,14 +144,19 @@ function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+
     const verifySession = async () => {
       if (!user || isOffline) {
         setIsCheckingAuth(false);
         return;
       }
       try {
-        await axios.get("auth/verify");
+        await axios.get("auth/verify", {
+          signal: controller.signal,
+        });
       } catch (error) {
+        if (axios.isCancel(error)) return;
         const status = error.response?.status;
         if (status === 401 || status === 403) {
           handleLogout();
@@ -162,6 +167,7 @@ function App() {
     };
     verifySession();
     return () => {
+      controller.abort();
       isMounted = false;
     };
   }, [isOffline, user, handleLogout]);

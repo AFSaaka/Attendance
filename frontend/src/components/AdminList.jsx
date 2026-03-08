@@ -37,20 +37,26 @@ const AdminList = ({ currentUser }) => {
     targetName: "",
   });
 
-  const fetchAdmins = async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get("/admin/get-admins");
-      setAdmins(res.data.data || []);
-    } catch (err) {
-      console.error("Failed to fetch admins:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchAdmins = async () => {
+      try {
+        setLoading(true);
+        const res = await axios.get("/admin/get-admins", {
+          signal: controller.signal,
+        });
+        setAdmins(res.data.data || []);
+      } catch (err) {
+        if (axios.isCancel(err)) return;
+        console.error("Failed to fetch admins:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchAdmins();
+    return () => controller.abort();
   }, []);
 
   // --- Modal Trigger Logic ---

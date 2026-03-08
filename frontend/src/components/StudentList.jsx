@@ -37,21 +37,27 @@ const StudentList = () => {
   const [currentStudent, setCurrentStudent] = useState(null);
 
   // FETCH DATA
-  const fetchStudents = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get("/admin/get-students");
-      setRawData(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.error("Fetch students error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchStudents = async () => {
+      try {
+        setLoading(true);
+        const res = await axios.get("/admin/get-students", {
+          signal: controller.signal,
+        });
+        setRawData(Array.isArray(res.data) ? res.data : []);
+      } catch (err) {
+        if (axios.isCancel(err)) return;
+        console.error("Fetch students error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchStudents();
-  }, [fetchStudents]);
+    return () => controller.abort();
+  }, []);
 
   // ACTION HANDLERS
   const triggerConfirm = (id, action) => {

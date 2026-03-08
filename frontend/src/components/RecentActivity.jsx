@@ -18,27 +18,32 @@ const RecentActivity = () => {
   const [error, setError] = useState(null);
   const [days, setDays] = useState("7");
 
-  // Wrapped in useCallback to prevent unnecessary re-renders in parent components
-  const fetchLogs = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
-    setError(null);
-    try {
-      const res = await axios.get("/admin/get-system-activity");
-      if (res.data.status === "success") {
-        setLogs(res.data.data);
-      }
-    } catch (err) {
-      const msg =
-        err.response?.data?.message || "Failed to load activity logs.";
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchLogs = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await axios.get("/admin/get-system-activity", {
+          signal: controller.signal,
+        });
+        if (res.data.status === "success") {
+          setLogs(res.data.data);
+        }
+      } catch (err) {
+        if (axios.isCancel(err)) return;
+        const msg =
+          err.response?.data?.message || "Failed to load activity logs.";
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchLogs();
-  }, [fetchLogs]);
+    return () => controller.abort();
+  }, []);
 
   const handleDownload = () => {
     const baseUrl = axios.defaults.baseURL || "";

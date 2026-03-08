@@ -20,17 +20,23 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
 
   // 1. Initial Load: Sessions
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchSessions = async () => {
       try {
-        const res = await axios.get("/admin/get-sessions");
+        const res = await axios.get("/admin/get-sessions", {
+          signal: controller.signal,
+        });
         setSessions(res.data);
         const current = res.data.find((s) => s.is_current);
         if (current) handleFilterChange("session_id", current.id);
       } catch (err) {
+        if (axios.isCancel(err)) return;
         console.error("Failed to load sessions");
       }
     };
     if (isOpen) fetchSessions();
+    return () => controller.abort();
   }, [isOpen]);
 
   // 2. Cascade Logic: When session or geography changes
