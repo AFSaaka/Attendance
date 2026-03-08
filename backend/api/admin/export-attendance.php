@@ -140,7 +140,8 @@ try {
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(["error" => $e->getMessage()]);
+    error_log("Export Attendance Error: " . $e->getMessage());
+    echo json_encode(["error" => "An error occurred. Please try again."]);
 }
 
 function generateScoreCSV($students, $meta) {

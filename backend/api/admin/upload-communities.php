@@ -124,7 +124,7 @@ try {
 
 } catch (Exception $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    error_log("Community Upload Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["error" => "Upload failed: " . $e->getMessage()]);
+    error_log("Community Upload Error: " . $e->getMessage());
+    echo json_encode(["error" => "An error occurred. Please try again."]);
 }

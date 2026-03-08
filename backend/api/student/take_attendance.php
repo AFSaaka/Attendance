@@ -50,5 +50,6 @@ try {
     }
 
 } catch (PDOException $e) {
-    echo json_encode(["status" => "error", "message" => "Database error: " . $e->getMessage()]);
+    error_log("Take Attendance Error: " . $e->getMessage());
+    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
 }

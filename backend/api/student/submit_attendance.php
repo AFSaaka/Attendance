@@ -92,5 +92,6 @@ try {
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Database Error: " . $e->getMessage()]);
+    error_log("Submit Attendance Error: " . $e->getMessage());
+    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
 }
