@@ -70,4 +70,6 @@ instance.interceptors.response.use(
   (error) => Promise.reject(error),
 );
 
+export const isCancel = axios.isCancel.bind(axios);
+
 export default instance;

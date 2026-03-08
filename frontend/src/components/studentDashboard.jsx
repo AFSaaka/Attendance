@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import Navbar from "./navbar";
 import Footer from "./footer";
-import axios from "../api/axios";
+import axios, { setCsrfToken, isCancel } from "../api/axios";
 import DashboardHero from "./DashboardHero";
 import AttendanceModal from "./AttendanceModal";
 import {
@@ -93,7 +93,7 @@ const StudentDashboard = ({
           JSON.stringify(response.data.signed),
         );
       } catch (err) {
-        if (axios.isCancel(err)) return;
+        if (isCancel(err)) return;
         if (!navigator.onLine) {
           const cached = localStorage.getItem(
             `signed_${user.uin}_${new Date().toISOString().split("T")[0]}`,
@@ -120,7 +120,7 @@ const StudentDashboard = ({
           );
         }
       } catch (err) {
-        if (axios.isCancel(err)) return;
+        if (isCancel(err)) return;
         if (err.response?.status === 401) onLogout();
         else if (!navigator.onLine) {
           const cached = localStorage.getItem(`placement_${user.uin}`);
@@ -132,6 +132,24 @@ const StudentDashboard = ({
     },
     [user?.uin, onLogout],
   );
+
+  // Restore cached data on mount (before API calls)
+  useEffect(() => {
+    if (!user?.uin) return;
+
+    // Restore placement from cache
+    const cachedPlacement = localStorage.getItem(`placement_${user.uin}`);
+    if (cachedPlacement) {
+      setPlacement(JSON.parse(cachedPlacement));
+    }
+
+    // Restore signed status from today's cache
+    const today = new Date().toISOString().split("T")[0];
+    const cachedSigned = localStorage.getItem(`signed_${user.uin}_${today}`);
+    if (cachedSigned !== null) {
+      setHasSignedToday(JSON.parse(cachedSigned));
+    }
+  }, [user?.uin]);
 
   // 4. EFFECTS
   useEffect(() => {
