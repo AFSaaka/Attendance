@@ -27,6 +27,10 @@ if (session_status() === PHP_SESSION_NONE) {
         'cookie_secure'   => $secure, // TRUE on Render (HTTPS)
         'cookie_path'     => '/',
     ]);
+    
+    // Initialize CSRF token after session_start
+    require_once __DIR__ . '/../utils/validators.php';
+    generate_csrf_token();
 }
 
 /**

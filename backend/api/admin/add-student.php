@@ -1,7 +1,9 @@
 <?php
 // backend/api/admin/add-student.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 requireAdmin();
+validateCSRFToken();
 
 $data = json_decode(file_get_contents("php://input"), true);
 $admin_id = $currentUser['id'];

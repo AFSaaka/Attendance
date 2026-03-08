@@ -1,7 +1,9 @@
 <?php
 // backend/api/admin/edit_community.php
 require_once __DIR__ . '/../common_auth.php';
-requireAdmin(); 
+require_once __DIR__ . '/../../utils/validators.php';
+requireAdmin();
+validateCSRFToken(); 
 
 header("Content-Type: application/json");
 

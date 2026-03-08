@@ -136,3 +136,62 @@ function validate_range($value, $min, $max) {
     $val = (float)$value;
     return $val >= $min && $val <= $max;
 }
+
+/**
+ * CSRF TOKEN FUNCTIONS
+ * Generates and manages CSRF tokens for state-changing endpoints
+ */
+
+/**
+ * Generates a new CSRF token and stores it in the session
+ * Call this once after session_start() to initialize the token
+ * @return string The generated token
+ */
+function generate_csrf_token() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * Retrieves the current CSRF token from the session
+ * @return string|null The CSRF token or null if not set
+ */
+function get_csrf_token() {
+    return $_SESSION['csrf_token'] ?? null;
+}
+
+/**
+ * Validates an incoming CSRF token
+ * Performs constant-time comparison to prevent timing attacks
+ * @param string $token The token from the request (header or body)
+ * @return bool True if token is valid, false otherwise
+ */
+function validate_csrf_token($token) {
+    $sessionToken = $_SESSION['csrf_token'] ?? null;
+    if (!$sessionToken || !$token) {
+        return false;
+    }
+    return hash_equals($sessionToken, $token);
+}
+
+/**
+ * Validates CSRF token from incoming request
+ * Checks X-CSRF-Token header first, then _csrf body parameter
+ * Sends 403 Forbidden if token is missing or invalid
+ * Call this at the start of any state-changing endpoint (POST/PUT/DELETE)
+ */
+function validateCSRFToken() {
+    // Get token from header or body
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['_csrf'] ?? null;
+    
+    if (!validate_csrf_token($token)) {
+        http_response_code(403);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'CSRF token validation failed'
+        ]);
+        exit;
+    }
+}

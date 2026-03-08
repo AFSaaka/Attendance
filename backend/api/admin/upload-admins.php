@@ -5,7 +5,8 @@ require_once __DIR__ . '/../../utils/validators.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 use Shuchkin\SimpleXLSX;
 
-requireSuperAdmin(); 
+requireSuperAdmin();
+validateCSRFToken(); 
 
 header("Content-Type: application/json");
 

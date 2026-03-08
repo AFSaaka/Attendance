@@ -1,10 +1,12 @@
 <?php
 // backend/api/admin/manage-admins.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 require_once __DIR__ . '/../../utils/mailer.php'; 
 
 // 1. Security Guard
 requireSuperAdmin();
+validateCSRFToken();
 
 header("Content-Type: application/json");
 

@@ -2,11 +2,13 @@
 // backend/api/admin/bulk-upload-students.php
 
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
 
-requireAdmin(); 
+requireAdmin();
+validateCSRFToken(); 
 
 if (!isset($_FILES['student_file'])) {
     http_response_code(400);

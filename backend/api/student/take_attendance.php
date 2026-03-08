@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../common_auth.php';
 require_once __DIR__ . '/../../utils/validators.php';
 requireLogin();
+validateCSRFToken();
 
 $data = json_decode(file_get_contents("php://input"), true);
 $lat = $data['lat'] ?? null;

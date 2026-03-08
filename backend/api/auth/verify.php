@@ -16,5 +16,6 @@ if (!isset($_SESSION['user_id'])) {
 echo json_encode([
     "status" => "success",
     "user_id" => $_SESSION['user_id'],
-    "role" => $_SESSION['user_role']
+    "role" => $_SESSION['user_role'],
+    "csrf_token" => get_csrf_token()
 ]);

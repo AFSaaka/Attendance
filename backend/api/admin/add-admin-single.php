@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../utils/validators.php';
 
 // 1. SECURITY: Explicitly restricted to Superadmins
 requireSuperAdmin();
+validateCSRFToken();
 
 header("Content-Type: application/json");
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

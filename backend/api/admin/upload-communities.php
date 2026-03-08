@@ -1,11 +1,13 @@
 <?php
 // backend/api/admin/upload-communities.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
 
 requireAdmin();
+validateCSRFToken();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

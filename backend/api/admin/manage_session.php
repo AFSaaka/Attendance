@@ -1,7 +1,9 @@
 <?php
 // backend/api/admin/manage_session.php
 require_once __DIR__ . '/../common_auth.php';
-requireSuperAdmin(); 
+require_once __DIR__ . '/../../utils/validators.php';
+requireSuperAdmin();
+validateCSRFToken(); 
 
 header("Content-Type: application/json");
 $input = json_decode(file_get_contents('php://input'), true);

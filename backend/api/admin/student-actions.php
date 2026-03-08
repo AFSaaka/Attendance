@@ -2,9 +2,11 @@
 // backend/api/admin/student-actions.php
 
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 
 // 1. SECURITY: Only Super Admins can perform these actions
-requireSuperAdmin(); 
+requireSuperAdmin();
+validateCSRFToken(); 
 
 $data = json_decode(file_get_contents("php://input"), true);
 $registry_id = $data['id'] ?? null; 

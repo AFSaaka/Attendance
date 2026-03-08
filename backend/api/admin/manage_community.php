@@ -1,8 +1,10 @@
 <?php
 // backend/api/admin/manage_community.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 
-requireAdmin(); 
+requireAdmin();
+validateCSRFToken(); 
 header("Content-Type: application/json");
 
 $input = json_decode(file_get_contents('php://input'), true);

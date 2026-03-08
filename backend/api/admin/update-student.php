@@ -1,9 +1,11 @@
 <?php
 // backend/api/admin/update-student.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 
 // Only Admins/SuperAdmins
-requireAdmin(); 
+requireAdmin();
+validateCSRFToken(); 
 
 $data = json_decode(file_get_contents("php://input"), true);
 
