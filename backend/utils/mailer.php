@@ -46,12 +46,6 @@ function sendViaSendGridAPI($recipientEmail, $recipientName, $subject, $htmlCont
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     
-    // 2. CRITICAL LOCAL FIX: Disable SSL verification on Local Windows
-    // Without this, local cURL often fails with "SSL certificate problem"
-    if (!getenv('DATABASE_URL')) {
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    }
-    
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);

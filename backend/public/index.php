@@ -72,7 +72,6 @@ $routes = [
     'student/get_placement' => '../api/student/get_placement.php', // ADD THIS!
     'student/submit_attendance' => '../api/student/submit_attendance.php',
     'student/check_daily_status' => '../api/student/check_daily_status.php',
-    'student/sync_attendance' => '../api/student/sync_attendance.php',
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
     'auth/verify' => '../api/auth/verify.php',

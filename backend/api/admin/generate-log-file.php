@@ -9,7 +9,17 @@ requireSuperAdmin();
 // Prevent any accidental output before headers
 ob_clean();
 
+// Whitelist allowed interval values
+$allowedDays = [7, 30, 90];
 $days = isset($_GET['days']) ? (int)$_GET['days'] : 7;
+
+// Validate days against whitelist; reject anything else
+if (!in_array($days, $allowedDays, true)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid days parameter. Allowed values: 7, 30, 90']);
+    exit;
+}
+
 $filename = "system_audit_" . date('Y-m-d') . "_" . $days . "days.csv";
 
 header('Content-Type: text/csv; charset=utf-8');
