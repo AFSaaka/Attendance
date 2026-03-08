@@ -49,6 +49,7 @@ const StudentDashboard = ({
   });
 
   const isSyncingRef = useRef(false);
+  const lastSyncAttemptRef = useRef(0);
 
   // 2. CALCULATIONS (Must be defined before functions that use them)
   const distance = useMemo(() => {
@@ -149,6 +150,12 @@ const StudentDashboard = ({
   useEffect(() => {
     const runSync = async () => {
       if (isSyncingRef.current || !navigator.onLine) return;
+
+      // Throttle sync attempts: skip if less than 10 seconds since last attempt
+      const timeSinceLastAttempt = Date.now() - lastSyncAttemptRef.current;
+      if (timeSinceLastAttempt < 10000) return;
+
+      lastSyncAttemptRef.current = Date.now();
 
       const pendingRaw = localStorage.getItem("pending_attendance");
       if (!pendingRaw) return;
