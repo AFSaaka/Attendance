@@ -46,6 +46,13 @@ function sendViaSendGridAPI($recipientEmail, $recipientName, $subject, $htmlCont
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     
+    // ENVIRONMENT-AWARE SSL: Disable verification only in local development
+    // Production (DATABASE_URL set) uses default SSL verification for security
+    // Local dev (no DATABASE_URL) may need verification disabled due to CA bundle issues
+    if (!getenv('DATABASE_URL')) {
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    }
+    
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
