@@ -2,7 +2,7 @@ import { registerSW } from "virtual:pwa-register";
 registerSW({ immediate: true });
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import axios from "./api/axios";
+import axios, { setCsrfToken } from "./api/axios";
 import udsLogo from "./assets/udslogo.ico";
 import InputField from "./components/inputField";
 import PrimaryButton from "./components/primaryButton";
@@ -130,14 +130,17 @@ function App() {
     localStorage.removeItem("uds_user");
     localStorage.removeItem("uds_vault"); // CRITICAL: Prevents next user from hijacking offline session
 
-    // 2. Update State
+    // 2. Clear CSRF token (set to null)
+    setCsrfToken(null);
+
+    // 3. Update State
     setUser(null);
     setView("login");
 
-    // 3. Reset title manually for immediate feedback
+    // 4. Reset title manually for immediate feedback
     document.title = "TTFPP | Login";
 
-    // 4. Redirect and cleanup
+    // 5. Redirect and cleanup
     resetLocation();
     navigate("/", { replace: true });
   }, [navigate, resetLocation]);
@@ -152,9 +155,13 @@ function App() {
         return;
       }
       try {
-        await axios.get("auth/verify", {
+        const response = await axios.get("auth/verify", {
           signal: controller.signal,
         });
+        // Capture CSRF token from verify response for subsequent requests
+        if (response.data?.csrf_token) {
+          setCsrfToken(response.data.csrf_token);
+        }
       } catch (error) {
         if (axios.isCancel(error)) return;
         const status = error.response?.status;
@@ -337,6 +344,12 @@ function App() {
               formData.password,
             );
             localStorage.setItem("uds_vault", loginHash);
+
+            // CSRF Token: Capture from login response if available
+            // (Will be confirmed/refreshed on first auth/verify call)
+            if (response.data.csrf_token) {
+              setCsrfToken(response.data.csrf_token);
+            }
 
             setUser(userData);
             setProcessingMessage(null);
