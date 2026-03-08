@@ -1,6 +1,7 @@
 <?php
 // backend/api/admin/add-admin-single.php
-require_once __DIR__ . '/../common_auth.php'; 
+require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php'; 
 
 // 1. SECURITY: Explicitly restricted to Superadmins
 requireSuperAdmin();
@@ -24,6 +25,11 @@ try {
     $email = strtolower(trim($data['email']));
     $name = trim($data['user_name']);
     $level = (isset($data['admin_level']) && $data['admin_level'] === 'super_admin') ? 'super_admin' : 'admin';
+    
+    // Validate email
+    if (!validate_email($email) || empty($name)) {
+        throw new Exception("Invalid input.");
+    }
 
     $pdo->beginTransaction();
 

@@ -1,6 +1,7 @@
 <?php
 // backend/api/admin/upload-admins.php
-require_once __DIR__ . '/../common_auth.php'; 
+require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 use Shuchkin\SimpleXLSX;
 
@@ -15,6 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 try {
     if (!isset($_FILES['file'])) throw new Exception("No file uploaded");
+
+    // Validate file upload (csv or xlsx, max 10MB)
+    if (!validate_file_upload($_FILES['file'], ['csv', 'xlsx'], 10)) {
+        throw new Exception("Invalid file upload");
+    }
 
     $fileTmpPath = $_FILES['file']['tmp_name'];
     $xlsx = SimpleXLSX::parse($fileTmpPath);

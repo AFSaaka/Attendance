@@ -1,15 +1,17 @@
 <?php
 // backend/api/student/verify-location.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 requireLogin();
 
 $data = json_decode(file_get_contents("php://input"), true);
 $studentLat = $data['lat'] ?? null;
 $studentLng = $data['lng'] ?? null;
 
-if (!$studentLat || !$studentLng) {
+if (!$studentLat || !$studentLng || !validate_coordinates($studentLat, $studentLng)) {
+    error_log("Invalid coordinates: lat=$studentLat, lng=$studentLng");
     http_response_code(400);
-    echo json_encode(["status" => "error", "message" => "Coordinates missing."]);
+    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
     exit;
 }
 

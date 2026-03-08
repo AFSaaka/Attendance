@@ -1,6 +1,7 @@
 <?php
 // backend/api/auth/login.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 
 $data = json_decode(file_get_contents('php://input'), true);
 $ip = $_SERVER['REMOTE_ADDR'];
@@ -8,9 +9,9 @@ $email = $data['email'] ?? '';
 $password = $data['password'] ?? '';
 $current_device_id = $data['device_id'] ?? null; // Moved up for clarity
 
-if (empty($email) || empty($password)) {
+if (empty($email) || !validate_email($email) || empty($password)) {
     http_response_code(400);
-    echo json_encode(["status" => "error", "message" => "Email and password required."]);
+    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
     exit;
 }
 

@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 try {
     // 2. Load dependencies
     require_once __DIR__ . '/../common_auth.php';
+    require_once __DIR__ . '/../../utils/validators.php';
     require_once __DIR__ . '/../../utils/mailer.php';
 
     // 3. Get and Decode JSON input
@@ -23,6 +24,11 @@ try {
     $email            = trim($data['email'] ?? '');
     $password         = $data['password'] ?? '';
     $confirmPassword  = $data['confirmPassword'] ?? '';
+    
+    // Validate email format
+    if (empty($email) || !validate_email($email)) {
+        throw new Exception("Invalid email format.");
+    }
 
     // 5. Validation
     if (empty($uin) || empty($indexNumber) || empty($email) || empty($password)) {

@@ -1,11 +1,20 @@
 <?php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 requireLogin();
 
 $data = json_decode(file_get_contents("php://input"), true);
-$lat = $data['lat'];
-$lng = $data['lng'];
+$lat = $data['lat'] ?? null;
+$lng = $data['lng'] ?? null;
 $userId = $_SESSION['user_id'];
+
+// Validate coordinates
+if ($lat === null || $lng === null || !validate_coordinates($lat, $lng)) {
+    error_log("Invalid coordinates: lat=$lat, lng=$lng");
+    http_response_code(400);
+    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
+    exit;
+}
 
 try {
     // This query finds the student's assigned community and calculates the distance

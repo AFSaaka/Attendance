@@ -1,6 +1,7 @@
 <?php
 header("Content-Type: application/json");
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 requireStudent(); 
 
 $input = json_decode(file_get_contents("php://input"), true);
@@ -21,6 +22,36 @@ try {
         $u_lat = isset($data['latitude']) ? (float)$data['latitude'] : null;
         $u_lng = isset($data['longitude']) ? (float)$data['longitude'] : null;
         $u_acc = isset($data['accuracy']) ? (float)$data['accuracy'] : null;
+        
+        // Validate coordinates
+        if ($u_lat !== null && $u_lng !== null) {
+            if (!validate_coordinates($u_lat, $u_lng)) {
+                error_log("Invalid coordinates: lat=$u_lat, lng=$u_lng");
+                $skippedCount++;
+                continue;
+            }
+        }
+        
+        // Validate week and day numbers
+        if (!validate_range($data['week_number'] ?? 1, 1, 52)) {
+            error_log("Invalid week number: " . ($data['week_number'] ?? 'null'));
+            $skippedCount++;
+            continue;
+        }
+        
+        if (!validate_range($data['day_number'] ?? 1, 1, 7)) {
+            error_log("Invalid day number: " . ($data['day_number'] ?? 'null'));
+            $skippedCount++;
+            continue;
+        }
+        
+        // Validate status
+        if (!validate_enum($data['status'] ?? 'present', ['present', 'absent', 'excused'])) {
+            error_log("Invalid attendance status: " . ($data['status'] ?? 'null'));
+            $skippedCount++;
+            continue;
+        }
+        
         $captured_at = $data['captured_at'] ?? date('Y-m-d H:i:s');
         $att_date = date('Y-m-d', strtotime($captured_at));
         
