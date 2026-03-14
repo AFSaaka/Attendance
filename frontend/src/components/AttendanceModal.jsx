@@ -7,6 +7,7 @@ const AttendanceModal = ({
   onSubmit,
   placement,
   isSubmitting,
+  location,
 }) => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -233,10 +234,25 @@ const AttendanceModal = ({
                   </div>
 
                   <div style={styles.footerNote}>
-                    <CheckCircle size={16} color="#198104" />
-                    <span>
-                      GPS verified: In range for {placement?.community}
-                    </span>
+                    {location?.lat && location?.lng ? (
+                      <>
+                        <CheckCircle size={16} color="#198104" />
+                        <span>
+                          GPS verified: In range for {placement?.community}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Loader2
+                          size={16}
+                          color="#f59e0b"
+                          className="animate-spin"
+                        />
+                        <span style={{ color: "#92400e" }}>
+                          Acquiring GPS... submission will use offline mode
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   <button

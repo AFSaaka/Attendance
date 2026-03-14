@@ -226,6 +226,8 @@ const StudentDashboard = ({
       return;
     }
     if (
+      location.lat &&
+      location.lng &&
       placement?.coordinate_check !== false &&
       distance !== null &&
       !isInRange &&
@@ -332,9 +334,7 @@ const StudentDashboard = ({
           isInRange={isInRange}
           distance={distance}
           buttonText={hasSignedToday ? "Submitted" : "Take Attendance "}
-          buttonDisabled={
-            hasSignedToday || !location.lat || !location.lng || isSubmitting
-          }
+          buttonDisabled={hasSignedToday || isSubmitting}
           isCompleted={hasSignedToday}
         />
 
@@ -344,6 +344,7 @@ const StudentDashboard = ({
           onSubmit={confirmAttendanceSubmission}
           placement={placement}
           isSubmitting={isSubmitting}
+          location={location}
         />
 
         <div style={styles.grid}>
