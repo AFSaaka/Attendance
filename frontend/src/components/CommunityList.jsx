@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MapPin,
@@ -13,7 +13,8 @@ import {
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
-import axios from "../api/axios";
+import { toast } from "sonner";
+import axios, { isCancel } from "../api/axios";
 import EditCommunityModal from "./EditCommunityModal";
 import ConfirmationModal from "./ConfirmationModal";
 
@@ -24,7 +25,6 @@ const CommunityList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [expanded, setExpanded] = useState({});
 
-  // --- MODAL STATES ---
   const [editModal, setEditModal] = useState({
     isOpen: false,
     data: null,
@@ -38,39 +38,56 @@ const CommunityList = () => {
     isLoading: false,
   });
 
-  const [user] = useState(JSON.parse(localStorage.getItem("uds_user")) || {});
+  // ✅ FIX: Read user from localStorage once on mount (consistent with rest of app)
+  const [user] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("uds_user")) || {};
+    } catch {
+      return {};
+    }
+  });
   const isSuperAdmin =
     user.role === "admin" && user.admin_level === "super_admin";
 
-  const fetchCommunities = async () => {
+  // ✅ FIX: fetchCommunities wrapped in useCallback with AbortController
+  // so it can be safely called from event handlers and used as a rollback
+  const fetchCommunities = useCallback(async () => {
+    const controller = new AbortController();
     try {
       setLoading(true);
-      const res = await axios.get("/admin/get-communities");
+      const res = await axios.get("/admin/get-communities", {
+        signal: controller.signal,
+      });
       setData(res.data?.data || []);
     } catch (err) {
+      // ✅ FIX: using imported isCancel instead of axios.isCancel
+      if (isCancel(err)) return;
       console.error("Fetch error:", err);
+      toast.error("Failed to load communities. Please refresh.");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchCommunities();
-  }, []);
+  }, [fetchCommunities]);
 
   const handleUpdate = async (updatedData) => {
     setEditModal((prev) => ({ ...prev, isLoading: true }));
     try {
       await axios.post("/admin/edit_community", updatedData);
-      // Refresh local data to reflect changes
       setData((prev) =>
         prev.map((c) =>
           c.id === updatedData.id ? { ...c, ...updatedData } : c,
         ),
       );
       setEditModal({ isOpen: false, data: null, isLoading: false });
+      // ✅ Sonner toast replacing alert()
+      toast.success("Community updated successfully.");
     } catch (err) {
-      alert(
+      // ✅ Sonner toast replacing alert()
+      toast.error(
         "Update failed: " + (err.response?.data?.message || "Server Error"),
       );
       setEditModal((prev) => ({ ...prev, isLoading: false }));
@@ -78,22 +95,15 @@ const CommunityList = () => {
   };
 
   const confirmAction = (id, actionType) => {
-    setModalConfig({
-      isOpen: true,
-      id,
-      actionType,
-      isLoading: false,
-    });
+    setModalConfig({ isOpen: true, id, actionType, isLoading: false });
   };
 
   const handleRegionToggle = async (e, regionName, currentCommunities) => {
-    e.stopPropagation(); // Prevent accordion collapse
-
-    // Determine target state based on first community in group
+    e.stopPropagation();
     const targetState = !currentCommunities[0].coordinate_check;
 
     try {
-      // Optimistic Update
+      // Optimistic update
       setData((prev) =>
         prev.map((c) =>
           c.region === regionName ? { ...c, coordinate_check: targetState } : c,
@@ -104,8 +114,13 @@ const CommunityList = () => {
         id: regionName,
         action: "toggle_region_coords",
       });
+
+      toast.success(
+        `GPS check ${targetState ? "enabled" : "disabled"} for ${regionName}.`,
+      );
     } catch (err) {
-      alert("Bulk update failed.");
+      // ✅ Sonner toast replacing alert()
+      toast.error("Bulk update failed. Changes rolled back.");
       fetchCommunities(); // Rollback
     }
   };
@@ -113,6 +128,7 @@ const CommunityList = () => {
   const handleAction = async (id, actionType) => {
     try {
       if (actionType.startsWith("toggle")) {
+        // Optimistic update
         setData((prev) =>
           prev.map((c) =>
             c.id === id ? { ...c, coordinate_check: !c.coordinate_check } : c,
@@ -134,14 +150,16 @@ const CommunityList = () => {
           actionType: "",
           isLoading: false,
         });
+        toast.success("Community removed.");
       }
     } catch (err) {
       if (err.response?.status === 428) {
-        alert("Action Blocked: No active academic session found.");
+        // ✅ Sonner toast replacing alert()
+        toast.error("Action blocked: No active academic session found.");
         navigate("/admin/sessions");
       } else {
-        alert(err.response?.data?.message || "Operation failed.");
-        fetchCommunities();
+        toast.error(err.response?.data?.message || "Operation failed.");
+        fetchCommunities(); // Rollback
       }
       setModalConfig((prev) => ({ ...prev, isLoading: false, isOpen: false }));
     }
@@ -221,7 +239,6 @@ const CommunityList = () => {
                 <span style={styles.regionName}>{region}</span>
               </div>
 
-              {/* NEW: REGION TOGGLE */}
               <div style={styles.regionHeaderRight}>
                 <span style={styles.regionToggleLabel}>Bulk GPS Check</span>
                 <button
@@ -264,9 +281,7 @@ const CommunityList = () => {
                                 }}
                               >
                                 {c.latitude
-                                  ? `${parseFloat(c.latitude).toFixed(
-                                      4,
-                                    )}, ${parseFloat(c.longitude).toFixed(4)}`
+                                  ? `${parseFloat(c.latitude).toFixed(4)}, ${parseFloat(c.longitude).toFixed(4)}`
                                   : "No GPS"}
                               </span>
                             </div>
