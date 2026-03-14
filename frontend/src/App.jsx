@@ -2,6 +2,7 @@ import { registerSW } from "virtual:pwa-register";
 registerSW({ immediate: true });
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Toaster } from "sonner";
 import axios, { setCsrfToken, isCancel } from "./api/axios";
 import udsLogo from "./assets/udslogo.ico";
 import InputField from "./components/inputField";
@@ -469,6 +470,7 @@ function App() {
 
   return (
     <div style={styles.wrapperStyle}>
+      <Toaster position="top-right" richColors />
       {processingMessage && <ProcessingOverlay message={processingMessage} />}
       {isOffline && (
         <div style={styles.offlineBanner}>
