@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Search,
   Mail,
@@ -14,7 +14,7 @@ import {
   AlertCircle,
   Calendar,
 } from "lucide-react";
-import axios from "../api/axios";
+import axios, { isCancel } from "../api/axios";
 import EditAdminModal from "./EditAdminModal";
 import ConfirmationModal from "./ConfirmationModal";
 
@@ -25,7 +25,6 @@ const AdminList = ({ currentUser }) => {
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // --- Confirmation Modal State ---
   const [confModal, setConfModal] = useState({
     isOpen: false,
     type: "info",
@@ -37,38 +36,36 @@ const AdminList = ({ currentUser }) => {
     targetName: "",
   });
 
-  useEffect(() => {
+  // ✅ FIX: fetchAdmins moved outside useEffect and wrapped in useCallback
+  // so it's accessible by handleConfirmedAction and EditAdminModal's onUpdate prop
+  const fetchAdmins = useCallback(async () => {
     const controller = new AbortController();
-
-    const fetchAdmins = async () => {
-      try {
-        setLoading(true);
-        const res = await axios.get("/admin/get-admins", {
-          signal: controller.signal,
-        });
-        setAdmins(res.data.data || []);
-      } catch (err) {
-        if (axios.isCancel(err)) return;
-        console.error("Failed to fetch admins:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAdmins();
-    return () => controller.abort();
+    try {
+      setLoading(true);
+      const res = await axios.get("/admin/get-admins", {
+        signal: controller.signal,
+      });
+      setAdmins(res.data.data || []);
+    } catch (err) {
+      if (isCancel(err)) return; // ✅ FIX: use exported isCancel, not axios.isCancel
+      console.error("Failed to fetch admins:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // --- Modal Trigger Logic ---
+  useEffect(() => {
+    fetchAdmins();
+  }, [fetchAdmins]);
+
   const openConfirm = (admin, actionType) => {
-    // Edge case: Sending individual invite without OTP
     if (actionType === "send_invite" && !admin.otp_code) {
       setConfModal({
         isOpen: true,
         type: "danger",
         title: "Missing OTP",
         message: `Cannot send invite to ${admin.user_name}. You must 'Refresh OTP' first to generate a secure code.`,
-        action: null, // No confirm action possible
+        action: null,
         isLoading: false,
       });
       return;
@@ -99,7 +96,7 @@ const AdminList = ({ currentUser }) => {
           message: `This will invalidate any previous codes sent to ${admin.user_name} and generate a new 48-hour OTP. Continue?`,
         };
         break;
-      case "toggle_status":
+      case "toggle_status": {
         const willDisable = admin.is_active;
         config = {
           ...config,
@@ -110,7 +107,8 @@ const AdminList = ({ currentUser }) => {
           } ${admin.user_name}'s access to the system?`,
         };
         break;
-      case "send_all_pending":
+      }
+      case "send_all_pending": {
         const count = admins.filter(
           (a) => a.must_reset_password && a.is_active && a.otp_code,
         ).length;
@@ -121,13 +119,13 @@ const AdminList = ({ currentUser }) => {
           message: `This will send invitation emails to ${count} active admins who have valid OTP codes. Proceed?`,
         };
         break;
+      }
       default:
         break;
     }
     setConfModal(config);
   };
 
-  // --- Final Execution Logic ---
   const handleConfirmedAction = async () => {
     if (!confModal.action) {
       setConfModal((prev) => ({ ...prev, isOpen: false }));
@@ -141,11 +139,11 @@ const AdminList = ({ currentUser }) => {
         action: confModal.action,
       });
 
-      // Special handling for new OTP display
       if (confModal.action === "refresh_otp" && res.data.new_otp) {
         alert(`New OTP for ${confModal.targetName}: ${res.data.new_otp}`);
       }
 
+      // ✅ FIX: fetchAdmins is now in scope here
       await fetchAdmins();
       setConfModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
     } catch (err) {
@@ -162,7 +160,6 @@ const AdminList = ({ currentUser }) => {
 
   return (
     <div style={styles.container}>
-      {/* Dynamic Confirmation Modal */}
       <ConfirmationModal
         isOpen={confModal.isOpen}
         isLoading={confModal.isLoading}
@@ -191,6 +188,7 @@ const AdminList = ({ currentUser }) => {
         </button>
       </div>
 
+      {/* ✅ FIX: onUpdate={fetchAdmins} now works because fetchAdmins is in scope */}
       <EditAdminModal
         isOpen={isEditModalOpen}
         admin={selectedAdmin}
@@ -198,102 +196,111 @@ const AdminList = ({ currentUser }) => {
         onUpdate={fetchAdmins}
       />
 
-      <table style={styles.table}>
-        <thead>
-          <tr style={styles.thead}>
-            <th>Administrator</th>
-            <th>Verification & Invitation</th>
-            <th>Status</th>
-            <th style={{ textAlign: "right" }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredAdmins.map((admin) => (
-            <tr key={admin.id} style={styles.tr}>
-              <td style={styles.td}>
-                <div style={styles.name}>{admin.user_name}</div>
-                <div style={styles.email}>
-                  <Mail size={12} /> {admin.email}
-                </div>
-              </td>
-              <td style={styles.td}>
-                {admin.must_reset_password ? (
-                  <div>
-                    {admin.otp_code ? (
-                      <>
-                        <div style={styles.pendingStatus}>
-                          <Clock size={14} /> Pending Setup
-                        </div>
-                        <code style={styles.otp}>{admin.otp_code}</code>
-                      </>
-                    ) : (
-                      <div style={styles.errorStatus}>
-                        <AlertCircle size={14} /> Missing OTP (Refresh Required)
-                      </div>
-                    )}
-
-                    {admin.last_invited_at && (
-                      <div style={styles.invitedAt}>
-                        <Calendar size={12} /> Sent:{" "}
-                        {new Date(admin.last_invited_at).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div style={styles.verifiedStatus}>
-                    <CheckCircle size={14} /> Account Verified
-                  </div>
-                )}
-              </td>
-              <td style={styles.td}>
-                <span style={admin.is_active ? styles.active : styles.disabled}>
-                  {admin.is_active ? "Active" : "Disabled"}
-                </span>
-              </td>
-              <td style={{ ...styles.td, textAlign: "right" }}>
-                <button
-                  title="Invite"
-                  onClick={() => openConfirm(admin, "send_invite")}
-                  style={styles.iconBtn}
-                >
-                  <Send size={16} />
-                </button>
-                <button
-                  title="Refresh OTP"
-                  onClick={() => openConfirm(admin, "refresh_otp")}
-                  style={styles.iconBtn}
-                >
-                  <RefreshCw size={16} />
-                </button>
-                <button
-                  title="Edit"
-                  onClick={() => {
-                    setSelectedAdmin(admin);
-                    setIsEditModalOpen(true);
-                  }}
-                  style={styles.iconBtn}
-                >
-                  <Edit size={16} />
-                </button>
-                <button
-                  title="Toggle"
-                  onClick={() => openConfirm(admin, "toggle_status")}
-                  style={{
-                    ...styles.iconBtn,
-                    color: admin.is_active ? "#ef4444" : "#10b981",
-                  }}
-                >
-                  {admin.is_active ? (
-                    <UserX size={16} />
-                  ) : (
-                    <UserCheck size={16} />
-                  )}
-                </button>
-              </td>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
+          <Loader2 size={24} className="animate-spin" />
+          <p>Loading administrators...</p>
+        </div>
+      ) : (
+        <table style={styles.table}>
+          <thead>
+            <tr style={styles.thead}>
+              <th>Administrator</th>
+              <th>Verification & Invitation</th>
+              <th>Status</th>
+              <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filteredAdmins.map((admin) => (
+              <tr key={admin.id} style={styles.tr}>
+                <td style={styles.td}>
+                  <div style={styles.name}>{admin.user_name}</div>
+                  <div style={styles.email}>
+                    <Mail size={12} /> {admin.email}
+                  </div>
+                </td>
+                <td style={styles.td}>
+                  {admin.must_reset_password ? (
+                    <div>
+                      {admin.otp_code ? (
+                        <>
+                          <div style={styles.pendingStatus}>
+                            <Clock size={14} /> Pending Setup
+                          </div>
+                          <code style={styles.otp}>{admin.otp_code}</code>
+                        </>
+                      ) : (
+                        <div style={styles.errorStatus}>
+                          <AlertCircle size={14} /> Missing OTP (Refresh
+                          Required)
+                        </div>
+                      )}
+                      {admin.last_invited_at && (
+                        <div style={styles.invitedAt}>
+                          <Calendar size={12} /> Sent:{" "}
+                          {new Date(admin.last_invited_at).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={styles.verifiedStatus}>
+                      <CheckCircle size={14} /> Account Verified
+                    </div>
+                  )}
+                </td>
+                <td style={styles.td}>
+                  <span
+                    style={admin.is_active ? styles.active : styles.disabled}
+                  >
+                    {admin.is_active ? "Active" : "Disabled"}
+                  </span>
+                </td>
+                <td style={{ ...styles.td, textAlign: "right" }}>
+                  <button
+                    title="Invite"
+                    onClick={() => openConfirm(admin, "send_invite")}
+                    style={styles.iconBtn}
+                  >
+                    <Send size={16} />
+                  </button>
+                  <button
+                    title="Refresh OTP"
+                    onClick={() => openConfirm(admin, "refresh_otp")}
+                    style={styles.iconBtn}
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                  <button
+                    title="Edit"
+                    onClick={() => {
+                      setSelectedAdmin(admin);
+                      setIsEditModalOpen(true);
+                    }}
+                    style={styles.iconBtn}
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button
+                    title="Toggle"
+                    onClick={() => openConfirm(admin, "toggle_status")}
+                    style={{
+                      ...styles.iconBtn,
+                      color: admin.is_active ? "#ef4444" : "#10b981",
+                    }}
+                  >
+                    {admin.is_active ? (
+                      <UserX size={16} />
+                    ) : (
+                      <UserCheck size={16} />
+                    )}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 };
