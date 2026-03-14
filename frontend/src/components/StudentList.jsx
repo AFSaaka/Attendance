@@ -13,7 +13,8 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import axios from "../api/axios";
+import { toast } from "sonner";
+import axios, { isCancel } from "../api/axios";
 import EditStudentModal from "./EditStudentModal";
 import ConfirmationModal from "./ConfirmationModal";
 
@@ -36,28 +37,29 @@ const StudentList = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentStudent, setCurrentStudent] = useState(null);
 
-  // FETCH DATA
-  useEffect(() => {
+  // ✅ FIX 1: fetchStudents moved outside useEffect and wrapped in useCallback
+  // so it can be passed to EditStudentModal's onUpdateSuccess prop
+  const fetchStudents = useCallback(async () => {
     const controller = new AbortController();
-
-    const fetchStudents = async () => {
-      try {
-        setLoading(true);
-        const res = await axios.get("/admin/get-students", {
-          signal: controller.signal,
-        });
-        setRawData(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        if (axios.isCancel(err)) return;
-        console.error("Fetch students error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStudents();
-    return () => controller.abort();
+    try {
+      setLoading(true);
+      const res = await axios.get("/admin/get-students", {
+        signal: controller.signal,
+      });
+      setRawData(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      // ✅ FIX 2: using imported isCancel instead of axios.isCancel
+      if (isCancel(err)) return;
+      console.error("Fetch students error:", err);
+      toast.error("Failed to load students. Please refresh.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
 
   // ACTION HANDLERS
   const triggerConfirm = (id, action) => {
@@ -97,11 +99,9 @@ const StudentList = () => {
       setActionLoading(loadingKey);
       await axios.post("/admin/student-actions", { id, action });
 
-      // OPTIMISTIC UPDATES: Update local state instead of re-fetching everything
+      // Optimistic update — update local state without re-fetching
       setRawData((prev) => {
-        if (action === "delete") {
-          return prev.filter((s) => s.id !== id);
-        }
+        if (action === "delete") return prev.filter((s) => s.id !== id);
         return prev.map((s) => {
           if (s.id === id) {
             if (action === "toggle_status")
@@ -113,11 +113,21 @@ const StudentList = () => {
       });
 
       setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
+
+      // ✅ Sonner toast replacing alert()
+      const successMessages = {
+        delete: "Student deleted successfully.",
+        clear_device:
+          "Device lock cleared. Student can log in from a new device.",
+        toggle_status: "Account status updated.",
+      };
+      toast.success(successMessages[action] || "Action completed.");
     } catch (err) {
       const msg =
         err.response?.data?.error ||
         "Action failed. Please check your connection.";
-      alert(msg);
+      // ✅ Sonner toast replacing alert()
+      toast.error(msg);
     } finally {
       setActionLoading(null);
     }
@@ -302,12 +312,11 @@ const StudentList = () => {
                                       </td>
                                       <td style={styles.td}>
                                         <div style={styles.actionWrapper}>
-                                          {/* 1. DEVICE RESET BUTTON (Only shows if student has claimed an account) */}
                                           {s.is_claimed && (
                                             <>
                                               <button
                                                 style={styles.btnDevice}
-                                                disabled={!!actionLoading} // Disable all buttons if ANY action is running
+                                                disabled={!!actionLoading}
                                                 onClick={() =>
                                                   triggerConfirm(
                                                     s.id,
@@ -327,7 +336,6 @@ const StudentList = () => {
                                                 )}
                                               </button>
 
-                                              {/* 2. TOGGLE STATUS (Active/Inactive) */}
                                               <button
                                                 style={
                                                   s.is_active
@@ -362,7 +370,6 @@ const StudentList = () => {
                                             </>
                                           )}
 
-                                          {/* 3. EDIT BUTTON */}
                                           <button
                                             style={styles.btnEdit}
                                             disabled={!!actionLoading}
@@ -372,7 +379,6 @@ const StudentList = () => {
                                             <Edit3 size={14} />
                                           </button>
 
-                                          {/* 4. DELETE BUTTON */}
                                           <button
                                             style={styles.btnDelete}
                                             disabled={!!actionLoading}
@@ -409,6 +415,7 @@ const StudentList = () => {
       )}
 
       {/* MODALS */}
+      {/* ✅ FIX 1 continued: fetchStudents now in scope for onUpdateSuccess prop */}
       <EditStudentModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
@@ -428,7 +435,6 @@ const StudentList = () => {
   );
 };
 
-// ... Styles (Same as before but with minor fixes for centering) ...
 const styles = {
   container: { display: "flex", flexDirection: "column", gap: "15px" },
   loading: {
