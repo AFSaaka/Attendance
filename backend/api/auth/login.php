@@ -1,5 +1,6 @@
 <?php
 // backend/api/auth/login.php
+header("Content-Type: application/json");
 require_once __DIR__ . '/../common_auth.php';
 require_once __DIR__ . '/../../utils/validators.php';
 
