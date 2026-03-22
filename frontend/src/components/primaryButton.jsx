@@ -1,4 +1,3 @@
-import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
 
 // Added 'type' prop to handle form submission
@@ -9,41 +8,25 @@ const PrimaryButton = ({
   isLoading,
   type = "button",
 }) => {
-  const [isHovered, setIsHovered] = useState(false);
-
-  const style = {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: disabled ? "#cccccc" : isHovered ? "#22a306" : "#198104",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "16px",
-    fontWeight: "600",
-    cursor: disabled || isLoading ? "not-allowed" : "pointer",
-    marginTop: "12px",
-    transition: "all 0.3s ease",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: "10px",
-    boxShadow:
-      !disabled && isHovered ? "0 0 15px rgba(25, 129, 4, 0.4)" : "none",
-    transform: !disabled && isHovered ? "translateY(-1px)" : "none",
-  };
-
   return (
     <button
-      type={type} // Crucial for Enter key support: should be "submit" inside a form
-      style={style}
+      type={type}
       onClick={onClick}
       disabled={disabled || isLoading}
-      onMouseEnter={() => !disabled && setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className={`
+        w-full px-4 py-3 mt-3 rounded-lg text-base font-semibold text-white
+        flex justify-center items-center gap-2.5
+        transition-all duration-300
+        ${
+          disabled || isLoading
+            ? "bg-gray-300 cursor-not-allowed"
+            : "bg-[#198104] hover:bg-[#22a306] hover:shadow-[0_0_15px_rgba(25,129,4,0.4)] hover:-translate-y-px cursor-pointer"
+        }
+      `}
     >
       {isLoading ? (
         <>
-          <Loader2 className="spinner" size={20} />
+          <Loader2 className="animate-spin" size={20} />
           Processing...
         </>
       ) : (

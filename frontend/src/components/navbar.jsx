@@ -1,59 +1,26 @@
-import { useState } from "react";
 import udsLogo from "../assets/udslogo.ico";
 
 const Navbar = ({ onLogout, userEmail }) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const navStyle = {
-    backgroundColor: "#fff",
-    padding: "10px 5%",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-    position: "sticky",
-    top: 0,
-    zIndex: 1000,
-  };
-
   return (
-    <nav style={navStyle}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <img src={udsLogo} alt="UDS" style={{ width: "35px" }} />
-        <span
-          style={{ fontWeight: "700", color: "#198104", fontSize: "1.1rem" }}
-        >
+    <nav className="bg-white px-[5%] py-2.5 flex justify-between items-center shadow-md sticky top-0 z-1000">
+      {/* Left: Logo + Title */}
+      <div className="flex items-center gap-2.5">
+        <img src={udsLogo} alt="UDS" className="w-9" />
+        <span className="font-bold text-[#198104] text-lg">
           TTFPP Attendance Portal
         </span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+      {/* Right: Email + Logout */}
+      <div className="flex items-center gap-5">
         {userEmail && (
-          <span
-            style={{
-              fontSize: "13px",
-              color: "#666",
-              display: "none",
-              sm: "block",
-            }}
-          >
+          <span className="text-[13px] text-gray-500 hidden sm:block">
             {userEmail}
           </span>
         )}
         <button
           onClick={onLogout}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-          style={{
-            background: isHovered ? "#cf1322" : "#fff1f0", // Turns red on hover
-            border: "1px solid #ffa39e",
-            color: isHovered ? "#ffffff" : "#cf1322", // Turns text white on hover for contrast
-            padding: "5px 15px",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontSize: "13px",
-            fontWeight: "600",
-            transition: "all 0.3s ease", // Smooth color transition
-          }}
+          className="bg-red-50 hover:bg-red-600 border border-red-300 text-red-600 hover:text-white px-4 py-1.5 rounded-md text-[13px] font-semibold cursor-pointer transition-all duration-300"
         >
           Logout
         </button>
