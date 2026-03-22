@@ -8,7 +8,12 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       // This tells the PWA which files to keep for offline use
-      includeAssets: ["udslogo.ico", "apple-touch-icon.png", "masked-icon.svg"],
+      includeAssets: [
+        "udslogo.ico",
+        "apple-touch-icon.png",
+        "logo192.png",
+        "logo512.png",
+      ],
       manifest: {
         name: "UDS TTFPP Portal",
         short_name: "TTFPP",
@@ -16,11 +21,21 @@ export default defineConfig({
         theme_color: "#0c0481",
         icons: [
           {
-            src: "udslogo.ico", // Ensure this exists in your public folder
+            src: "udslogo.ico",
             sizes: "64x64",
             type: "image/x-icon",
           },
-          // You should ideally add 192x192 and 512x512 .png icons here for full mobile support
+          {
+            src: "logo192.png",
+            sizes: "192x192",
+            type: "image/png",
+          },
+          {
+            src: "logo512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
         ],
       },
       workbox: {
