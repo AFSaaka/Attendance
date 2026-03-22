@@ -5,7 +5,7 @@
 require_once __DIR__ . '/../common_auth.php';
 
 // 2. Enforce the security guard
-requireLogin();
+requireStudent();
 
 // 3. The logic is now strictly focused on data retrieval
 try {
@@ -31,7 +31,7 @@ try {
     JOIN student_registry sr ON s.registry_id = sr.id
     LEFT JOIN student_enrollments se ON sr.id = se.registry_id
     LEFT JOIN academic_sessions asess ON se.session_id = asess.id
-    LEFT JOIN communities c ON se.community = c.name
+    LEFT JOIN communities c ON se.community_id = c.id
     WHERE s.user_id = ?
     LIMIT 1
 ");

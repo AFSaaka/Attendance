@@ -3,8 +3,8 @@ header("Content-Type: application/json");
 require_once __DIR__ . '/../common_auth.php';
 require_once __DIR__ . '/../../utils/validators.php';
 requireStudent();
-// TEMPORARILY DISABLED - debugging CSRF flow
-// validateCSRFToken(); 
+
+ validateCSRFToken(); 
 
 $input = json_decode(file_get_contents("php://input"), true);
 date_default_timezone_set('Africa/Accra');
@@ -48,7 +48,7 @@ try {
         }
         
         // Validate status
-        if (!validate_enum($data['status'] ?? 'present', ['present', 'absent', 'excused'])) {
+        if (!validate_enum($data['status'] ?? 'present', ['present', 'absent'])) {
             error_log("Invalid attendance status: " . ($data['status'] ?? 'null'));
             $skippedCount++;
             continue;
@@ -65,7 +65,7 @@ try {
         $metaSql = "SELECT c.id as community_id, c.latitude as c_lat, c.longitude as c_lng, 
                            c.coordinate_check, se.session_id
                     FROM public.student_enrollments se
-                    JOIN public.communities c ON se.community = c.name
+                    JOIN public.communities c ON se.community_id = c.id
                     WHERE se.id = :eid";
         $metaStmt = $pdo->prepare($metaSql);
         $metaStmt->execute(['eid' => $data['enrollment_id'] ?? null]);
