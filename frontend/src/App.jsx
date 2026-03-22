@@ -181,7 +181,19 @@ function App() {
   }, [isOffline, user, handleLogout]);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
+    const handleOnline = async () => {
+      setIsOffline(false);
+      // Refresh CSRF token when coming back online
+      // This ensures sync can proceed immediately with a valid token
+      try {
+        const res = await axios.get("auth/csrf");
+        if (res.data?.csrf_token) {
+          setCsrfToken(res.data.csrf_token);
+        }
+      } catch {
+        // Silently ignore — verifySession will handle token refresh
+      }
+    };
     const handleOffline = () => setIsOffline(true);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);

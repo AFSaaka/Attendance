@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import Navbar from "./navbar";
 import Footer from "./footer";
-import axios, { setCsrfToken, isCancel } from "../api/axios";
+import axios, { setCsrfToken, isCancel, getCsrfToken } from "../api/axios";
 import DashboardHero from "./DashboardHero";
 import AttendanceModal from "./AttendanceModal";
 import {
@@ -167,6 +167,9 @@ const StudentDashboard = ({
   useEffect(() => {
     const runSync = async () => {
       if (isSyncingRef.current || !navigator.onLine) return;
+
+      // Don't sync until CSRF token is available
+      if (!getCsrfToken()) return;
 
       // Throttle sync attempts: skip if less than 10 seconds since last attempt
       const timeSinceLastAttempt = Date.now() - lastSyncAttemptRef.current;
