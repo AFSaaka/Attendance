@@ -14,6 +14,7 @@ import StudentModal from "./StudentModal";
 import CommunityModal from "./CommunityModal";
 import AdminModal from "./AdminModal";
 import AttendanceExportModal from "./AttendanceExportModal";
+import AttendanceMonitor from "./AttendanceMonitor";
 import StudentList from "./StudentList";
 import CommunityList from "./CommunityList";
 import AdminList from "./AdminList";
@@ -30,6 +31,7 @@ import {
   Lock,
   Archive,
   CalendarDays,
+  ClipboardList,
   Loader2,
 } from "lucide-react";
 
@@ -180,6 +182,7 @@ const AdminDashboard = ({ user, onLogout, onOpenModal, onOpenExport }) => {
 
   const getActiveTab = () => {
     const p = location.pathname;
+    if (p.includes("/attendance")) return "attendance";
     if (p.includes("/students")) return "students";
     if (p.includes("/communities")) return "communities";
     if (p.includes("/admins")) return "admins";
@@ -238,6 +241,15 @@ const AdminDashboard = ({ user, onLogout, onOpenModal, onOpenExport }) => {
             <LayoutDashboard size={18} /> Overview
           </Link>
           <Link
+            to="/admin/attendance"
+            style={{
+              ...styles.tab,
+              ...(activeTab === "attendance" && styles.activeTab),
+            }}
+          >
+            <ClipboardList size={18} /> Attendance
+          </Link>
+          <Link
             to="/admin/students"
             style={{
               ...styles.tab,
@@ -286,6 +298,7 @@ const AdminDashboard = ({ user, onLogout, onOpenModal, onOpenExport }) => {
               <OverviewContent stats={stats} error={error} user={user} />
             }
           />
+          <Route path="attendance" element={<AttendanceMonitor />} />
           <Route path="students" element={<StudentList />} />
           <Route path="communities" element={<CommunityList />} />
           {user?.admin_level === "super_admin" && (
