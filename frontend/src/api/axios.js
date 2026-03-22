@@ -39,23 +39,23 @@ instance.interceptors.request.use(
     const isAuthEndpoint = path.includes("/auth/");
 
     // Add CSRF token to state-changing requests (POST, PUT, DELETE)
-   if (!isAuthEndpoint && ["POST", "PUT", "DELETE"].includes(method)) {
-     const token = getCsrfToken();
-     if (token) {
-       // Always send as header
-       config.headers["X-CSRF-Token"] = token;
+    if (!isAuthEndpoint && ["POST", "PUT", "DELETE"].includes(method)) {
+      const token = getCsrfToken();
+      if (token) {
+        // Always send as header
+        config.headers["X-CSRF-Token"] = token;
 
-       // Also inject into JSON body as _csrf fallback
-       // Handles edge cases where headers are stripped by proxies
-       if (
-         config.data &&
-         typeof config.data === "object" &&
-         !Array.isArray(config.data)
-       ) {
-         config.data = { ...config.data, _csrf: token };
-       }
-     }
-   }
+        // Also inject into JSON body as _csrf fallback
+        // Handles edge cases where headers are stripped by proxies
+        if (
+          config.data &&
+          typeof config.data === "object" &&
+          !Array.isArray(config.data)
+        ) {
+          config.data = { ...config.data, _csrf: token };
+        }
+      }
+    }
 
     return config;
   },
@@ -71,7 +71,8 @@ instance.interceptors.response.use(
     // If this is auth/verify response, capture the csrf_token
     if (
       response.config.url &&
-      response.config.url.includes("auth/verify") &&
+      (response.config.url.includes("auth/verify") ||
+        response.config.url.includes("auth/csrf")) &&
       response.data?.csrf_token
     ) {
       setCsrfToken(response.data.csrf_token);

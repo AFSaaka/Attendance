@@ -77,6 +77,7 @@ $routes = [
     'student/check_daily_status' => '../api/student/check_daily_status.php',
     'attendance/sync' => '../api/attendance/sync.php',
     'auth/me' => '../api/auth/me.php',
+    'auth/csrf' => '../api/auth/csrf.php',
     'auth/verify' => '../api/auth/verify.php',
     'test-mail' => '../api/test-mail.php',
    
