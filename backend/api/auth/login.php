@@ -89,17 +89,18 @@ try {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_role'] = $user['role'];
 
-        echo json_encode([
-            "status" => "success",
-            "user" => [
-                "email" => $user['email'],
-                "user_name" => $user['user_name'],
-                "role" => $user['role'],
-                "uin" => $user['uin'],
-                "admin_level" => $user['admin_level'],
-                "must_reset_password" => (bool) $user['must_reset_password']
-            ]
-        ]);
+       echo json_encode([
+    "status" => "success",
+    "csrf_token" => get_csrf_token(),
+    "user" => [
+        "email" => $user['email'],
+        "user_name" => $user['user_name'],
+        "role" => $user['role'],
+        "uin" => $user['uin'],
+        "admin_level" => $user['admin_level'],
+        "must_reset_password" => (bool) $user['must_reset_password']
+    ]
+]);
     } else {
        // 4. FAILURE PATH (The Postgres Upsert)
     $upsertRetry = $pdo->prepare("

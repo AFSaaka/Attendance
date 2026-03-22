@@ -182,16 +182,9 @@ function validate_csrf_token($token) {
  * Call this at the start of any state-changing endpoint (POST/PUT/DELETE)
  */
 function validateCSRFToken() {
-    // 1. Check header first (fastest path — set by Axios interceptor)
+    // Read ONLY from header — never consume php://input here
+    // The Axios interceptor always sends X-CSRF-Token header for POST requests
     $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
-
-    // 2. Fall back to JSON body _csrf field
-    // NOTE: $_POST is empty for JSON requests — must read raw input
-    if (!$token) {
-        $rawInput = file_get_contents('php://input');
-        $body = json_decode($rawInput, true);
-        $token = $body['_csrf'] ?? null;
-    }
 
     if (!validate_csrf_token($token)) {
         error_log("CSRF validation failed. Token received: " . ($token ?? 'none'));
