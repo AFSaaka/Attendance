@@ -507,7 +507,12 @@ function App() {
                   <img
                     src={udsLogo}
                     alt="UDS"
-                    style={{ width: "60px", marginBottom: "10px" }}
+                    style={{
+                      width: "60px",
+                      marginBottom: "10px",
+                      display: "block",
+                      margin: "0 auto 10px",
+                    }}
                   />
                   {message.text && (
                     <div
