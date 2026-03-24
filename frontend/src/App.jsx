@@ -151,7 +151,7 @@ function App() {
     const controller = new AbortController();
 
     const verifySession = async () => {
-      if (!user || isOffline) {
+      if (!user || !navigator.onLine) {
         setIsCheckingAuth(false);
         return;
       }
@@ -178,7 +178,7 @@ function App() {
       controller.abort();
       isMounted = false;
     };
-  }, [isOffline, user, handleLogout]);
+  }, [user, handleLogout]);
 
   useEffect(() => {
     const handleOnline = async () => {
@@ -549,7 +549,9 @@ function App() {
                         handleAction();
                       }}
                     >
-                      <h2 style={{ margin: "0 0 5px 0" }}>UDS</h2>
+                      <h2 style={{ margin: "0 0 5px 0" }}>
+                        University for Development Studies
+                      </h2>
                       <p style={styles.subTitle}>TTFPP Portal</p>
 
                       {view === "login" ? (

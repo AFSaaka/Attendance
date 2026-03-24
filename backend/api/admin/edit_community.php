@@ -14,12 +14,36 @@ if (!isset($input['id'])) {
     echo json_encode(["status" => "error", "message" => "Missing ID"]);
     exit;
 }
+// Guard: prevent start_date change if attendance already exists
+if (isset($input['start_date'])) {
+    $existingStmt = $pdo->prepare("SELECT start_date FROM public.communities WHERE id = ?::uuid");
+    $existingStmt->execute([$input['id']]);
+    $existing = $existingStmt->fetch();
+
+    if ($existing && $existing['start_date'] !== $input['start_date']) {
+        $countStmt = $pdo->prepare("
+            SELECT COUNT(*) FROM public.attendance_records ar
+            JOIN public.student_enrollments se ON ar.enrollment_id = se.id
+            WHERE se.community_id = ?::uuid
+        ");
+        $countStmt->execute([$input['id']]);
+        $count = $countStmt->fetchColumn();
+
+        if ($count > 0) {
+            http_response_code(409);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Cannot change start date — $count attendance records already exist for this community. Changing the date would corrupt week/day calculations for existing records."
+            ]);
+            exit;
+        }
+    }
+}
 
 try {
     $pdo->beginTransaction();
 
-    // We use your original '?' style but include the new columns from your schema.
-    // We cast the location parameters explicitly to prevent the 'Indeterminate datatype' error.
+    
     $stmt = $pdo->prepare("
         UPDATE public.communities 
         SET 
