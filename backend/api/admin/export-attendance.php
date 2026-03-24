@@ -52,7 +52,7 @@ try {
             ar.status
         FROM public.student_enrollments se
         JOIN public.student_registry sr ON se.registry_id = sr.id
-        JOIN public.communities c ON (se.community = c.name AND se.region = c.region AND se.district = c.district)
+        JOIN public.communities c ON c.id = se.community_id
         LEFT JOIN public.attendance_records ar ON ar.enrollment_id = se.id
         WHERE se.session_id = :session_id
           AND c.is_deleted = false

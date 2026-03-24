@@ -1,29 +1,8 @@
+// src/utils/gpsUtils.js
 /**
  * Haversine Formula: Calculates distance in meters between two coordinates.
  * This works offline as it's pure mathematics.
  */
-
-export const calculateProgramProgress = (startDate) => {
-  if (!startDate) return { week: 1, day: 1 };
-
-  const [year, month, day] = startDate.split("-").map(Number);
-  const start = new Date(year, month - 1, day);
-  start.setHours(0, 0, 0, 0);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const diffTime = today.getTime() - start.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-  const week = Math.floor(diffDays / 7) + 1;
-  const currentDay = (diffDays % 7) + 1;
-
-  return {
-    week: week > 0 ? week : 1,
-    day: currentDay > 0 ? currentDay : 1,
-  };
-};
 
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
   if (!lat1 || !lon1 || !lat2 || !lon2) return null;
@@ -49,4 +28,3 @@ export const checkIsInRange = (distance, threshold = 500) => {
   if (distance === null) return false;
   return distance <= threshold;
 };
-// src/utils/gpsUtils.js
