@@ -1,5 +1,3 @@
-import { registerSW } from "virtual:pwa-register";
-registerSW({ immediate: true });
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
