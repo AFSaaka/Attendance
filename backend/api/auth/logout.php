@@ -1,7 +1,13 @@
 <?php
 // backend/api/auth/logout.php
-session_start();
-$_SESSION = array(); // Clear variables
+header("Content-Type: application/json");
+
+// Use common_auth to start session with correct production settings
+// (SameSite=None, Secure=true for cross-origin Netlify -> Render)
+require_once __DIR__ . '/../common_auth.php';
+
+$_SESSION = [];
+
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
     setcookie(
@@ -14,5 +20,7 @@ if (ini_get("session.use_cookies")) {
         $params["httponly"]
     );
 }
+
 session_destroy();
+
 echo json_encode(["status" => "success", "message" => "Logged out."]);

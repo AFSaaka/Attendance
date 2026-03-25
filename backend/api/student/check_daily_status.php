@@ -15,9 +15,15 @@ try {
     /** * We use $currentUser['id'] which was safely populated by common_auth.php.
      * We no longer need $_GET['user_id'], which makes the script un-hackable by ID swapping.
      */
-    $sql = "SELECT id FROM public.attendance_records 
-            WHERE user_id = :uid 
-            AND attendance_date = CURRENT_DATE 
+    // Scope to active session so records from previous sessions
+    // on the same calendar date don't falsely show as signed
+    $sql = "SELECT ar.id 
+            FROM public.attendance_records ar
+            JOIN public.student_enrollments se ON ar.enrollment_id = se.id
+            JOIN public.academic_sessions asess ON se.session_id = asess.id
+            WHERE ar.user_id = :uid 
+            AND ar.attendance_date = CURRENT_DATE
+            AND asess.is_current = true
             LIMIT 1";
 
     $stmt = $pdo->prepare($sql);
