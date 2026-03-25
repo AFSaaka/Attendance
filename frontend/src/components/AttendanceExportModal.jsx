@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "../api/axios";
+import axios, { isCancel } from "../api/axios";
 import { Download, X, Archive, AlertCircle, MapPin } from "lucide-react";
 
 const AttendanceExportModal = ({ isOpen, onClose }) => {
@@ -31,7 +31,7 @@ const AttendanceExportModal = ({ isOpen, onClose }) => {
         const current = res.data.find((s) => s.is_current);
         if (current) handleFilterChange("session_id", current.id);
       } catch (err) {
-        if (axios.isCancel(err)) return;
+        if (isCancel(err)) return;
         console.error("Failed to load sessions");
       }
     };

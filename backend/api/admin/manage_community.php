@@ -74,14 +74,24 @@ try {
     }
 
     $logStmt = $pdo->prepare("INSERT INTO public.audit_logs (user_id, action_type, target_id, details, ip_address, session_id) VALUES (?, ?, ?, ?, ?, ?)");
-    $logStmt->execute([
-        $currentUser['id'] ?? null, 
-        $actionType,
-        (is_numeric($id) ? $id : null), // Region name isn't an ID, so handle carefully
-        json_encode($details),
-        $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
-        $sessionId
-    ]);
+   // For region-level actions, target_id is null (region name stored in details)
+// For community-level actions, target_id is the community UUID
+$targetId = null;
+if ($action !== 'toggle_region_coords') {
+    // Validate it looks like a UUID before using as target_id
+    if (preg_match('/^[0-9a-f-]{36}$/i', $id)) {
+        $targetId = $id;
+    }
+}
+
+$logStmt->execute([
+    $currentUser['id'] ?? null,
+    $actionType,
+    $targetId,
+    json_encode($details),
+    $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0',
+    $sessionId
+]);
 
     $pdo->commit();
     echo json_encode(["status" => "success", "new_state" => $details]);

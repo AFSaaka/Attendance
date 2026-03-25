@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Calendar,
   Plus,
@@ -43,9 +44,10 @@ const SessionManager = () => {
         ...formData,
       });
       setModalOpen(false);
+      toast.success("Session created successfully.");
       fetchSessions();
     } catch (err) {
-      alert("Error creating session.");
+      toast.error(err.response?.data?.message || "Error creating session.");
     } finally {
       setIsSubmitting(false);
     }
@@ -70,7 +72,7 @@ const SessionManager = () => {
       setConfirmState({ isOpen: false, id: null, isLoading: false });
       fetchSessions();
     } catch (err) {
-      alert("Error updating session.");
+      toast.error(err.response?.data?.message || "Error updating session.");
       setConfirmState((prev) => ({ ...prev, isLoading: false }));
     }
   };
