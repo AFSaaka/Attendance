@@ -84,16 +84,20 @@ try {
             if ($dist > 500) { $is_suspicious = true; $reason = "Distance: " . round($dist) . "m"; }
         }
 
-        $sql = "INSERT INTO public.attendance_records (
+       $sql = "INSERT INTO public.attendance_records (
                     user_id, enrollment_id, community_id, session_id,
                     attendance_date, status, latitude, longitude, accuracy,
                     week_number, day_number, location_geom, 
                     is_suspicious, suspicious_reason, is_offline, captured_at, synced
                 ) VALUES (
                     :uid, :eid, :cid, :sid, :date, :status, :lat, :lng, :acc, :wk, :day,
-                    ST_SetSRID(ST_MakePoint(:lng_g, :lat_g), 4326)::geography,
+                    CASE 
+                        WHEN :lng_g IS NOT NULL AND :lat_g IS NOT NULL 
+                        THEN ST_SetSRID(ST_MakePoint(:lng_g, :lat_g), 4326)::geography 
+                        ELSE NULL 
+                    END,
                     :susp, :reason, :off, :cap, :synced
-                ) 
+                )
                 ON CONFLICT (user_id, attendance_date) 
                 DO UPDATE SET 
                     synced = EXCLUDED.synced,
@@ -126,5 +130,5 @@ try {
     if ($pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
     error_log("Submit Attendance Error: " . $e->getMessage());
-    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
+    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
 }
