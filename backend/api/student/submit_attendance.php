@@ -91,9 +91,9 @@ try {
                     is_suspicious, suspicious_reason, is_offline, captured_at, synced
                 ) VALUES (
                     :uid, :eid, :cid, :sid, :date, :status, :lat, :lng, :acc, :wk, :day,
-                    CASE 
-                        WHEN :lng_g IS NOT NULL AND :lat_g IS NOT NULL 
-                        THEN ST_SetSRID(ST_MakePoint(:lng_g, :lat_g), 4326)::geography 
+                   CASE 
+                        WHEN :lng_g::double precision IS NOT NULL AND :lat_g::double precision IS NOT NULL 
+                        THEN ST_SetSRID(ST_MakePoint(:lng_g::double precision, :lat_g::double precision), 4326)::geography 
                         ELSE NULL 
                     END,
                     :susp, :reason, :off, :cap, :synced
