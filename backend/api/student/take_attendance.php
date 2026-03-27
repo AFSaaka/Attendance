@@ -43,7 +43,7 @@ try {
     }
 
     $distance = (float) $result['distance_meters'];
-    $is_on_site = ($distance <= 500); // 500 meter threshold
+    $is_on_site = ($distance <= 1000); // 1000 meter threshold
 
     if ($is_on_site) {
         // TODO: Insert into your attendance_logs table here

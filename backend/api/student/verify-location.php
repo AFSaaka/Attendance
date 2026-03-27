@@ -42,7 +42,7 @@ try {
     }
 
     $distance = $result['distance_meters'];
-    $is_on_site = $distance <= 500; // 500 meter threshold
+    $is_on_site = $distance <= 1000; // 1000 meter threshold
 
     // 3. Update the attendance record
     // (You would insert into an attendance_logs table here)

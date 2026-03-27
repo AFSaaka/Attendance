@@ -81,7 +81,7 @@ try {
             $distStmt = $pdo->prepare($distSql);
             $distStmt->execute(['lng' => $u_lng, 'lat' => $u_lat, 'c_lng' => $meta['c_lng'], 'c_lat' => $meta['c_lat']]);
             $dist = $distStmt->fetchColumn();
-            if ($dist > 500) { $is_suspicious = true; $reason = "Distance: " . round($dist) . "m"; }
+            if ($dist > 1000) { $is_suspicious = true; $reason = "Distance: " . round($dist) . "m"; }
         }
 
        $sql = "INSERT INTO public.attendance_records (

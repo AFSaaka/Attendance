@@ -24,7 +24,7 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
 /**
  * Checks if a student is within the allowed range (e.g., 200 meters)
  */
-export const checkIsInRange = (distance, threshold = 500) => {
+export const checkIsInRange = (distance, threshold = 1000) => {
   if (distance === null) return false;
   return distance <= threshold;
 };
