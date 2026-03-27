@@ -11,22 +11,24 @@ requireStudent();
 try {
     // We use the ID directly from the secure session provided by common_auth.php
    $stmt = $pdo->prepare("
-    SELECT 
-        se.id,
-        sr.full_name, 
-        sr.uin, 
-        sr.index_number,
-        se.program, 
-        se.level, 
-        se.region, 
-        se.district, 
-        se.community,
-        asess.description as academic_year,
-        c.latitude as community_lat,
-        c.longitude as community_lng,
-        c.coordinate_check, -- ADD THIS LINE
-        c.start_date,
-        c.duration_weeks
+   SELECT 
+    se.id,
+    se.session_id,
+    se.community_id,
+    sr.full_name, 
+    sr.uin, 
+    sr.index_number,
+    se.program, 
+    se.level, 
+    se.region, 
+    se.district, 
+    se.community,
+    asess.description as academic_year,
+    c.latitude as community_lat,
+    c.longitude as community_lng,
+    c.coordinate_check,
+    c.start_date,
+    c.duration_weeks
     FROM students s
     JOIN student_registry sr ON s.registry_id = sr.id
     LEFT JOIN student_enrollments se ON sr.id = se.registry_id

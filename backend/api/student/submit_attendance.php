@@ -106,7 +106,8 @@ try {
                     is_suspicious = EXCLUDED.is_suspicious,
                     suspicious_reason = EXCLUDED.suspicious_reason,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE public.attendance_records.synced = FALSE"; // Only update if not already synced
+                WHERE public.attendance_records.synced = FALSE
+                    OR public.attendance_records.status != 'present'";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
