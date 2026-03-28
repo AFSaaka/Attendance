@@ -92,5 +92,5 @@ try {
     }
 
     http_response_code(500);
-    echo json_encode(["error" => "System Error: Update failed."]);
+     echo json_encode(["status" => "error", "message" => $e->getMessage()]);
 }
