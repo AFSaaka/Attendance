@@ -56,11 +56,12 @@ function sendViaSendGridAPI($recipientEmail, $recipientName, $subject, $htmlCont
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-    if ($httpCode >= 200 && $httpCode < 300) {
+   if ($httpCode >= 200 && $httpCode < 300) {
         return true;
     } else {
+        // TEMPORARY DEBUG — remove after fixing
         error_log("SendGrid API Error ($httpCode): " . $response);
-        return false;
+        throw new Exception("SendGrid Error $httpCode: " . $response);
     }
 }
 

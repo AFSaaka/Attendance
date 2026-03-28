@@ -49,11 +49,8 @@ try {
     ");
     $update->execute([$newOtp, $expiry, $user['id']]);
 
-    if (sendOTPEmail($email, $newOtp)) {
-        echo json_encode(["status" => "success", "message" => "A new code has been sent to your email."]);
-    } else {
-        throw new Exception("Email service error. Please try again later.");
-    }
+   sendOTPEmail($email, $newOtp); // Will throw with real error if it fails
+    echo json_encode(["status" => "success", "message" => "A new code has been sent to your email."]);
 
 } catch (Exception $e) {
     http_response_code(400);
