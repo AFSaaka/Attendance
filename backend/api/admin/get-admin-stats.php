@@ -46,5 +46,5 @@ try {
 } catch (Exception $e) {
     error_log("Dashboard Stats Error: " . $e->getMessage());
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Internal Server Error"]);
+    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
 }
