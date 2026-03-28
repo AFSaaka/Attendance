@@ -50,7 +50,8 @@ instance.interceptors.request.use(
         if (
           config.data &&
           typeof config.data === "object" &&
-          !Array.isArray(config.data)
+          !Array.isArray(config.data) &&
+          !(config.data instanceof FormData)
         ) {
           config.data = { ...config.data, _csrf: token };
         }
