@@ -131,5 +131,5 @@ try {
     if ($pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
     error_log("Submit Attendance Error: " . $e->getMessage());
-    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    echo json_encode(["status" => "error", "message" => "An error occurred. Please try again."]);
 }

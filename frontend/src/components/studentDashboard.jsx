@@ -75,7 +75,7 @@ const StudentDashboard = ({
       placement?.coordinate_check === 0
     )
       return true;
-    return checkIsInRange(distance, 500);
+    return checkIsInRange(distance, 1000);
   }, [distance, placement?.coordinate_check]);
 
   // 3. API DATA FETCHING
