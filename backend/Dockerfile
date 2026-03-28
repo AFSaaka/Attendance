@@ -27,4 +27,14 @@ ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 
+# Increase PHP limits for bulk uploads
+RUN echo "upload_max_filesize = 32M"   >> /usr/local/etc/php/php.ini \
+ && echo "post_max_size = 32M"         >> /usr/local/etc/php/php.ini \
+ && echo "max_execution_time = 120"    >> /usr/local/etc/php/php.ini \
+ && echo "max_input_time = 120"        >> /usr/local/etc/php/php.ini \
+ && echo "memory_limit = 256M"         >> /usr/local/etc/php/php.ini
+
+# Increase Apache timeout to survive long uploads
+RUN echo "Timeout 120" >> /etc/apache2/apache2.conf
+
 EXPOSE 80
