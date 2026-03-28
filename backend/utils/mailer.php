@@ -2,34 +2,38 @@
 // backend/utils/mailer.php
 require_once __DIR__ . '/../config/db.php';
 
-function sendViaResend($recipientEmail, $recipientName, $subject, $htmlContent, $plainText) {
+/**
+ * Brevo (formerly Sendinblue) API Helper
+ * 300 emails/day free, no domain verification required
+ */
+function sendViaBrevo($recipientEmail, $recipientName, $subject, $htmlContent, $plainText) {
     try {
         $env       = loadEnv();
-        $apiKey    = $env['RESEND_API_KEY'] ?? getenv('RESEND_API_KEY') ?? null;
-        $fromEmail = $env['SMTP_FROM']      ?? getenv('SMTP_FROM')      ?? 'onboarding@resend.dev';
+        $apiKey    = $env['BREVO_API_KEY'] ?? getenv('BREVO_API_KEY') ?? null;
+        $fromEmail = $env['SMTP_FROM']     ?? getenv('SMTP_FROM')     ?? 'noreply@uds.edu.gh';
     } catch (Exception $e) {
         error_log("Mailer Config Error: " . $e->getMessage());
         return false;
     }
 
     if (!$apiKey) {
-        error_log("Resend Error: RESEND_API_KEY is missing.");
+        error_log("Brevo Error: BREVO_API_KEY is missing.");
         return false;
     }
 
     $data = [
-        "from"    => "UDS TTFPP Portal <{$fromEmail}>",
-        "to"      => [$recipientEmail],
-        "subject" => $subject,
-        "html"    => $htmlContent,
-        "text"    => $plainText,
+        "sender"      => ["name" => "UDS TTFPP Portal", "email" => $fromEmail],
+        "to"          => [["email" => $recipientEmail, "name" => $recipientName]],
+        "subject"     => $subject,
+        "htmlContent" => $htmlContent,
+        "textContent" => $plainText,
     ];
 
-    $ch = curl_init('https://api.resend.com/emails');
+    $ch = curl_init('https://api.brevo.com/v3/smtp/email');
     curl_setopt($ch, CURLOPT_POST, 1);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $apiKey,
+        'api-key: ' . $apiKey,
         'Content-Type: application/json',
     ]);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -47,10 +51,13 @@ function sendViaResend($recipientEmail, $recipientName, $subject, $htmlContent, 
         return true;
     }
 
-    error_log("Resend API Error ($httpCode): " . $response);
+    error_log("Brevo API Error ($httpCode): " . $response);
     return false;
 }
 
+/**
+ * Sends OTP to students for registration/verification
+ */
 function sendOTPEmail($recipientEmail, $otpCode) {
     $subject   = "UDS TTFPP - Account Verification Code";
     $plainText = "Your verification code is: $otpCode. It expires in 15 minutes.";
@@ -60,16 +67,19 @@ function sendOTPEmail($recipientEmail, $otpCode) {
             <p>Hello Student,</p>
             <p>To complete your account claim, please use the code below:</p>
             <div style='background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 10px; color: #0c0481;'>$otpCode</div>
-            <p style='font-size: 12px; color: #888;'>This code expires in 15 minutes.</p>
+            <p style='font-size: 12px; color: #888;'>This code expires in 1 hour.</p>
             <hr style='border: 0; border-top: 1px solid #f1f5f9; margin: 10px 0;'>
             <p style='font-size: 12px; color: #94a3b8; text-align: center;'>
                 University for Development Studies - TTFPP
             </p>
         </div>";
 
-    return sendViaResend($recipientEmail, "Student", $subject, $htmlContent, $plainText);
+    return sendViaBrevo($recipientEmail, "Student", $subject, $htmlContent, $plainText);
 }
 
+/**
+ * Sends invitation OTP to new admins
+ */
 function sendAdminInviteEmail($recipientEmail, $userName, $otpCode) {
     $subject   = "UDS TTFPP - Administrative Access Invitation";
     $plainText = "Hello $userName, your admin access code is: $otpCode. Valid for 48 hours.";
@@ -86,5 +96,5 @@ function sendAdminInviteEmail($recipientEmail, $userName, $otpCode) {
             </p>
         </div>";
 
-    return sendViaResend($recipientEmail, $userName, $subject, $htmlContent, $plainText);
+    return sendViaBrevo($recipientEmail, $userName, $subject, $htmlContent, $plainText);
 }
