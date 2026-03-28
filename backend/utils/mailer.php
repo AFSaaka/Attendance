@@ -5,8 +5,8 @@ require_once __DIR__ . '/../config/db.php';
 function sendViaResend($recipientEmail, $recipientName, $subject, $htmlContent, $plainText) {
     try {
         $env       = loadEnv();
-        $apiKey    = $env['RESEND_API_KEY'] ?? null;
-        $fromEmail = $env['SMTP_FROM']      ?? 'onboarding@resend.dev';
+        $apiKey    = $env['RESEND_API_KEY'] ?? getenv('RESEND_API_KEY') ?? null;
+        $fromEmail = $env['SMTP_FROM']      ?? getenv('SMTP_FROM')      ?? 'onboarding@resend.dev';
     } catch (Exception $e) {
         error_log("Mailer Config Error: " . $e->getMessage());
         return false;

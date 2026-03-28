@@ -10,13 +10,14 @@ function loadEnv() {
     
     if ($dbUrl) {
         // PRODUCTION: Pull from System Environment
-        return [
-            'DATABASE_URL' => $dbUrl,
-            'SMTP_HOST'    => getenv('SMTP_HOST'),
-            'SMTP_USER'    => getenv('SMTP_USER'),
-            'SMTP_PASS'    => getenv('SMTP_PASS'),
-            'SMTP_PORT'    => getenv('SMTP_PORT'),
-            'SMTP_FROM'    => getenv('SMTP_FROM')
+       return [
+            'DATABASE_URL'   => $dbUrl,
+            'SMTP_HOST'      => getenv('SMTP_HOST'),
+            'SMTP_USER'      => getenv('SMTP_USER'),
+            'SMTP_PASS'      => getenv('SMTP_PASS'),
+            'SMTP_PORT'      => getenv('SMTP_PORT'),
+            'SMTP_FROM'      => getenv('SMTP_FROM'),
+            'RESEND_API_KEY' => getenv('RESEND_API_KEY'),
         ];
     }
 
