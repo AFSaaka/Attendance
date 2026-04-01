@@ -157,16 +157,31 @@ function App() {
         const response = await axios.get("auth/verify", {
           signal: controller.signal,
         });
-        // Capture CSRF token from verify response for subsequent requests
         if (response.data?.csrf_token) {
           setCsrfToken(response.data.csrf_token);
         }
       } catch (error) {
         if (isCancel(error)) return;
         const status = error.response?.status;
-        if (status === 401 || status === 403) {
+        if (status === 401) {
+          // PHP session expired — try silent re-login using cached vault
+          // This is the "stay logged in" flow: vault exists but server session is gone
+          const cachedVault = localStorage.getItem("uds_vault");
+          const cachedUser = localStorage.getItem("uds_user");
+          if (cachedVault && cachedUser) {
+            // We can't silently re-login without the password, so just
+            // clear the server session state and let the user continue
+            // using offline mode until they next interact with the app
+            // The next manual login will re-establish the server session
+            if (isMounted) setIsCheckingAuth(false);
+            return;
+          }
+          handleLogout();
+        } else if (status === 403) {
+          // Account deactivated — must logout
           handleLogout();
         }
+        // Network errors (no response) — don't logout, user may be offline
       } finally {
         if (isMounted) setIsCheckingAuth(false);
       }

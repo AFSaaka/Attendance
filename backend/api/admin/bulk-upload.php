@@ -7,8 +7,6 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
 
-// Increase time limit for large uploads — Render allows up to 30s on free tier
-// This won't help with the gateway timeout but ensures PHP itself doesn't die first
 set_time_limit(120);
 ini_set('memory_limit', '256M');
 
@@ -38,16 +36,14 @@ try {
     $rows = [];
     if ($extension === 'csv') {
         if (($handle = fopen($filePath, "r")) !== FALSE) {
-            fgetcsv($handle); // Skip header
-            while (($data = fgetcsv($handle)) !== FALSE) {
-                $rows[] = $data;
-            }
+            fgetcsv($handle);
+            while (($data = fgetcsv($handle)) !== FALSE) { $rows[] = $data; }
             fclose($handle);
         }
     } elseif ($extension === 'xlsx') {
         if ($xlsx = SimpleXLSX::parse($filePath)) {
             $rows = $xlsx->rows();
-            array_shift($rows); // Skip header
+            array_shift($rows);
         } else {
             throw new Exception("Excel parse error: " . SimpleXLSX::parseError());
         }
@@ -55,11 +51,11 @@ try {
         throw new Exception("Invalid file type. Please upload .csv or .xlsx");
     }
 
-    // 3. VALIDATE AND CLEAN ROWS BEFORE TOUCHING THE DATABASE
-    $cleanRows     = [];
-    $errors        = [];
-    $seenUins      = [];
-    $seenIndices   = [];
+    // 3. VALIDATE AND CLEAN ROWS
+    $cleanRows   = [];
+    $errors      = [];
+    $seenUins    = [];
+    $seenIndices = [];
 
     foreach ($rows as $i => $row) {
         $row = array_map('trim', array_map('strval', $row));
@@ -77,7 +73,6 @@ try {
             continue;
         }
 
-        // Deduplicate within file
         if (isset($seenUins[$uin])) {
             $errors[] = "Row " . ($i + 2) . ": Duplicate UIN ($uin) in file.";
             continue;
@@ -87,51 +82,65 @@ try {
             continue;
         }
 
-        $seenUins[$uin]      = true;
-        $seenIndices[$idx]   = true;
-        $cleanRows[]         = [$uin, $idx, $name, $prog, $reg, $dist, $comm, $level];
+        $seenUins[$uin]    = true;
+        $seenIndices[$idx] = true;
+        $cleanRows[]       = [$uin, $idx, $name, $prog, $reg, $dist, $comm, $level];
     }
 
     if (empty($cleanRows)) {
-        throw new Exception("No valid rows found in file. Check errors: " . implode("; ", array_slice($errors, 0, 3)));
+        throw new Exception("No valid rows found. Errors: " . implode("; ", array_slice($errors, 0, 3)));
     }
 
-    // 4. SINGLE TRANSACTION — no per-row SAVEPOINTs
+    // 4. PRE-LOAD COMMUNITY ID MAP
+    // Build a lookup: "name|district|region" => community_id
+    // This avoids N+1 queries in the loop — one query to load all communities
+    $commStmt = $pdo->query("
+        SELECT id, name, district, region 
+        FROM public.communities 
+        WHERE is_deleted = false
+    ");
+    $communityMap = [];
+    foreach ($commStmt->fetchAll(PDO::FETCH_ASSOC) as $c) {
+        $key = strtolower(trim($c['name']) . '|' . trim($c['district']) . '|' . trim($c['region']));
+        $communityMap[$key] = $c['id'];
+    }
+
+    // 5. TRANSACTION
     $pdo->beginTransaction();
 
-    // Prepared statements created ONCE outside the loop
     $stmtRegistry = $pdo->prepare("
         INSERT INTO public.student_registry
             (uin, index_number, full_name, program, region, district, community, is_deleted, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, false, NOW())
         ON CONFLICT (index_number) DO UPDATE SET
-            full_name    = EXCLUDED.full_name,
-            uin          = EXCLUDED.uin,
-            program      = EXCLUDED.program,
-            region       = EXCLUDED.region,
-            district     = EXCLUDED.district,
-            community    = EXCLUDED.community,
-            is_deleted   = false,
-            updated_at   = NOW()
-        RETURNING id
-    ");
-
-    // Fetch by index as fallback (ON CONFLICT DO UPDATE returns no row on some PG versions)
-    $stmtFetch = $pdo->prepare(
-        "SELECT id FROM public.student_registry WHERE index_number = ?"
-    );
-
-    $stmtEnroll = $pdo->prepare("
-        INSERT INTO public.student_enrollments
-            (registry_id, session_id, level, program, region, district, community, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-        ON CONFLICT (registry_id, session_id) DO UPDATE SET
-            level      = EXCLUDED.level,
+            full_name  = EXCLUDED.full_name,
+            uin        = EXCLUDED.uin,
             program    = EXCLUDED.program,
             region     = EXCLUDED.region,
             district   = EXCLUDED.district,
             community  = EXCLUDED.community,
+            is_deleted = false,
             updated_at = NOW()
+        RETURNING id
+    ");
+
+    $stmtFetch = $pdo->prepare(
+        "SELECT id FROM public.student_registry WHERE index_number = ?"
+    );
+
+    // ✅ KEY FIX: include community_id in the enrollment INSERT
+    $stmtEnroll = $pdo->prepare("
+        INSERT INTO public.student_enrollments
+            (registry_id, session_id, level, program, region, district, community, community_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        ON CONFLICT (registry_id, session_id) DO UPDATE SET
+            level        = EXCLUDED.level,
+            program      = EXCLUDED.program,
+            region       = EXCLUDED.region,
+            district     = EXCLUDED.district,
+            community    = EXCLUDED.community,
+            community_id = EXCLUDED.community_id,
+            updated_at   = NOW()
     ");
 
     $successCount = 0;
@@ -139,10 +148,18 @@ try {
     foreach ($cleanRows as $row) {
         [$uin, $idx, $name, $prog, $reg, $dist, $comm, $level] = $row;
 
+        // Resolve community_id from pre-loaded map
+        $mapKey      = strtolower(trim($comm) . '|' . trim($dist) . '|' . trim($reg));
+        $community_id = $communityMap[$mapKey] ?? null;
+
+        if (!$community_id) {
+            // Community not found — still insert the student but log the warning
+            $errors[] = "Warning: Community '$comm' in '$dist' not found in communities table for index $idx. Enrolled without community link.";
+        }
+
         $stmtRegistry->execute([$uin, $idx, $name, $prog, $reg, $dist, $comm]);
         $registry_id = $stmtRegistry->fetchColumn();
 
-        // Fallback fetch if RETURNING gave nothing
         if (!$registry_id) {
             $stmtFetch->execute([$idx]);
             $registry_id = $stmtFetch->fetchColumn();
@@ -153,11 +170,11 @@ try {
             continue;
         }
 
-        $stmtEnroll->execute([$registry_id, $session_id, $level, $prog, $reg, $dist, $comm]);
+        $stmtEnroll->execute([$registry_id, $session_id, $level, $prog, $reg, $dist, $comm, $community_id]);
         $successCount++;
     }
 
-    // 5. AUDIT LOG
+    // 6. AUDIT LOG
     $logStmt = $pdo->prepare("
         INSERT INTO public.audit_logs (user_id, action_type, details, ip_address)
         VALUES (?, 'BULK_UPLOAD', ?, ?)
@@ -180,7 +197,7 @@ try {
         "count"   => $successCount,
         "errors"  => $errors,
         "message" => "Successfully imported $successCount students." .
-                     (count($errors) > 0 ? " " . count($errors) . " rows skipped." : ""),
+                     (count($errors) > 0 ? " " . count($errors) . " warnings." : ""),
     ]);
 
 } catch (Exception $e) {
