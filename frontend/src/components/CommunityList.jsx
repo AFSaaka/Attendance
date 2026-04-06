@@ -12,6 +12,9 @@ import {
   Edit3,
   ToggleLeft,
   ToggleRight,
+  CalendarDays,
+  Check,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import axios, { isCancel } from "../api/axios";
@@ -38,7 +41,11 @@ const CommunityList = () => {
     isLoading: false,
   });
 
-  // ✅ FIX: Read user from localStorage once on mount (consistent with rest of app)
+  // ── NEW: per-region date picker state ──────────────────────────────────────
+  // { [regionName]: { open: bool, start_date: string, duration_weeks: string } }
+  const [regionDatePicker, setRegionDatePicker] = useState({});
+  const [regionDateLoading, setRegionDateLoading] = useState({});
+
   const [user] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("uds_user")) || {};
@@ -49,8 +56,6 @@ const CommunityList = () => {
   const isSuperAdmin =
     user.role === "admin" && user.admin_level === "super_admin";
 
-  // ✅ FIX: fetchCommunities wrapped in useCallback with AbortController
-  // so it can be safely called from event handlers and used as a rollback
   const fetchCommunities = useCallback(async () => {
     const controller = new AbortController();
     try {
@@ -60,7 +65,6 @@ const CommunityList = () => {
       });
       setData(res.data?.data || []);
     } catch (err) {
-      // ✅ FIX: using imported isCancel instead of axios.isCancel
       if (isCancel(err)) return;
       console.error("Fetch error:", err);
       toast.error("Failed to load communities. Please refresh.");
@@ -83,10 +87,8 @@ const CommunityList = () => {
         ),
       );
       setEditModal({ isOpen: false, data: null, isLoading: false });
-      // ✅ Sonner toast replacing alert()
       toast.success("Community updated successfully.");
     } catch (err) {
-      // ✅ Sonner toast replacing alert()
       toast.error(
         "Update failed: " + (err.response?.data?.message || "Server Error"),
       );
@@ -101,47 +103,121 @@ const CommunityList = () => {
   const handleRegionToggle = async (e, regionName, currentCommunities) => {
     e.stopPropagation();
     const targetState = !currentCommunities[0].coordinate_check;
-
     try {
-      // Optimistic update
       setData((prev) =>
         prev.map((c) =>
           c.region === regionName ? { ...c, coordinate_check: targetState } : c,
         ),
       );
-
       await axios.post("/admin/manage_community", {
         id: regionName,
         action: "toggle_region_coords",
       });
-
       toast.success(
         `GPS check ${targetState ? "enabled" : "disabled"} for ${regionName}.`,
       );
     } catch (err) {
-      // ✅ Sonner toast replacing alert()
       toast.error("Bulk update failed. Changes rolled back.");
-      fetchCommunities(); // Rollback
+      fetchCommunities();
     }
+  };
+
+  // ── NEW: open/close the inline date picker for a region ────────────────────
+  const openRegionDatePicker = (e, regionName, currentCommunities) => {
+    e.stopPropagation();
+    // Pre-fill with the first community's existing date if available
+    const existingDate = currentCommunities[0]?.start_date || "";
+    const existingDuration = currentCommunities[0]?.duration_weeks || "8";
+    setRegionDatePicker((prev) => ({
+      ...prev,
+      [regionName]: {
+        open: !prev[regionName]?.open,
+        start_date: existingDate,
+        duration_weeks: String(existingDuration),
+      },
+    }));
+  };
+
+  const updateRegionDateField = (regionName, field, value) => {
+    setRegionDatePicker((prev) => ({
+      ...prev,
+      [regionName]: { ...prev[regionName], [field]: value },
+    }));
+  };
+
+  const handleRegionDateSave = async (e, regionName) => {
+    e.stopPropagation();
+    const picker = regionDatePicker[regionName];
+    if (!picker?.start_date) {
+      toast.error("Please select a start date.");
+      return;
+    }
+
+    setRegionDateLoading((prev) => ({ ...prev, [regionName]: true }));
+    try {
+      const payload = {
+        id: regionName,
+        action: "set_region_start_date",
+        start_date: picker.start_date,
+      };
+      if (picker.duration_weeks) {
+        payload.duration_weeks = parseInt(picker.duration_weeks, 10);
+      }
+
+      await axios.post("/admin/manage_community", payload);
+
+      // Optimistic update — apply to all communities in this region
+      setData((prev) =>
+        prev.map((c) =>
+          c.region === regionName
+            ? {
+                ...c,
+                start_date: picker.start_date,
+                duration_weeks: picker.duration_weeks
+                  ? parseInt(picker.duration_weeks, 10)
+                  : c.duration_weeks,
+              }
+            : c,
+        ),
+      );
+
+      // Close the picker
+      setRegionDatePicker((prev) => ({
+        ...prev,
+        [regionName]: { ...prev[regionName], open: false },
+      }));
+
+      toast.success(`Start date set for all communities in ${regionName}.`);
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Failed to set region start date.",
+      );
+    } finally {
+      setRegionDateLoading((prev) => ({ ...prev, [regionName]: false }));
+    }
+  };
+
+  const cancelRegionDatePicker = (e, regionName) => {
+    e.stopPropagation();
+    setRegionDatePicker((prev) => ({
+      ...prev,
+      [regionName]: { ...prev[regionName], open: false },
+    }));
   };
 
   const handleAction = async (id, actionType) => {
     try {
       if (actionType.startsWith("toggle")) {
-        // Optimistic update
         setData((prev) =>
           prev.map((c) =>
             c.id === id ? { ...c, coordinate_check: !c.coordinate_check } : c,
           ),
         );
       }
-
       if (actionType === "delete") {
         setModalConfig((prev) => ({ ...prev, isLoading: true }));
       }
-
       await axios.post("/admin/manage_community", { id, action: actionType });
-
       if (actionType === "delete") {
         setData((prev) => prev.filter((c) => c.id !== id));
         setModalConfig({
@@ -154,12 +230,11 @@ const CommunityList = () => {
       }
     } catch (err) {
       if (err.response?.status === 428) {
-        // ✅ Sonner toast replacing alert()
         toast.error("Action blocked: No active academic session found.");
         navigate("/admin/sessions");
       } else {
         toast.error(err.response?.data?.message || "Operation failed.");
-        fetchCommunities(); // Rollback
+        fetchCommunities();
       }
       setModalConfig((prev) => ({ ...prev, isLoading: false, isOpen: false }));
     }
@@ -200,7 +275,6 @@ const CommunityList = () => {
         onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
         onConfirm={() => handleAction(modalConfig.id, modalConfig.actionType)}
       />
-
       <EditCommunityModal
         isOpen={editModal.isOpen}
         community={editModal.data}
@@ -222,6 +296,16 @@ const CommunityList = () => {
       {Object.entries(groupedData).map(([region, districts]) => {
         const allInRegion = Object.values(districts).flat();
         const allVerified = allInRegion.every((c) => c.coordinate_check);
+        const picker = regionDatePicker[region];
+        const pickerOpen = picker?.open || false;
+        const pickerLoading = regionDateLoading[region] || false;
+
+        // Summary: show the most common start_date in the region
+        const regionDates = allInRegion
+          .map((c) => c.start_date)
+          .filter(Boolean);
+        const regionDateSummary =
+          regionDates.length > 0 ? regionDates[0] : null;
 
         return (
           <div key={region} style={styles.regionContainer}>
@@ -229,6 +313,7 @@ const CommunityList = () => {
               style={styles.regionHeader}
               onClick={() => toggleRegion(region)}
             >
+              {/* ── Left: expand + name ── */}
               <div style={styles.regionHeaderLeft}>
                 {expanded[region] ? (
                   <ChevronDown size={20} />
@@ -239,20 +324,131 @@ const CommunityList = () => {
                 <span style={styles.regionName}>{region}</span>
               </div>
 
-              <div style={styles.regionHeaderRight}>
-                <span style={styles.regionToggleLabel}>Bulk GPS Check</span>
-                <button
-                  style={styles.regionToggleBtn}
-                  onClick={(e) => handleRegionToggle(e, region, allInRegion)}
-                >
-                  {allVerified ? (
-                    <ToggleRight size={28} color="#16a34a" />
-                  ) : (
-                    <ToggleLeft size={28} color="#94a3b8" />
-                  )}
-                </button>
+              {/* ── Right: bulk controls ── */}
+              <div
+                style={styles.regionHeaderRight}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Bulk Start Date button */}
+                <div style={styles.regionControl}>
+                  <span style={styles.regionToggleLabel}>
+                    {regionDateSummary
+                      ? `From ${regionDateSummary}`
+                      : "Bulk Start Date"}
+                  </span>
+                  <button
+                    style={{
+                      ...styles.regionDateBtn,
+                      backgroundColor: pickerOpen ? "#f0fdf4" : "#fff",
+                      borderColor: pickerOpen ? "#16a34a" : "#e2e8f0",
+                      color: pickerOpen ? "#16a34a" : "#64748b",
+                    }}
+                    title="Set start date for all communities in this region"
+                    onClick={(e) =>
+                      openRegionDatePicker(e, region, allInRegion)
+                    }
+                  >
+                    <CalendarDays size={15} />
+                    <span style={{ fontSize: "12px", fontWeight: "600" }}>
+                      Set Dates
+                    </span>
+                  </button>
+                </div>
+
+                {/* Bulk GPS toggle */}
+                <div style={styles.regionControl}>
+                  <span style={styles.regionToggleLabel}>Bulk GPS Check</span>
+                  <button
+                    style={styles.regionToggleBtn}
+                    onClick={(e) => handleRegionToggle(e, region, allInRegion)}
+                  >
+                    {allVerified ? (
+                      <ToggleRight size={28} color="#16a34a" />
+                    ) : (
+                      <ToggleLeft size={28} color="#94a3b8" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* ── Inline date picker panel ─────────────────────────────── */}
+            {pickerOpen && (
+              <div
+                style={styles.datePanelWrapper}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={styles.datePanelInner}>
+                  <div style={styles.datePanelLeft}>
+                    <CalendarDays size={16} color="#16a34a" />
+                    <span style={styles.datePanelTitle}>
+                      Set start date for all communities in{" "}
+                      <strong>{region}</strong>
+                    </span>
+                  </div>
+                  <div style={styles.datePanelFields}>
+                    <div style={styles.dateField}>
+                      <label style={styles.dateFieldLabel}>Start Date</label>
+                      <input
+                        type="date"
+                        value={picker?.start_date || ""}
+                        onChange={(e) =>
+                          updateRegionDateField(
+                            region,
+                            "start_date",
+                            e.target.value,
+                          )
+                        }
+                        style={styles.dateInput}
+                      />
+                    </div>
+                    <div style={styles.dateField}>
+                      <label style={styles.dateFieldLabel}>
+                        Duration (Weeks)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="52"
+                        value={picker?.duration_weeks || ""}
+                        placeholder="e.g. 8"
+                        onChange={(e) =>
+                          updateRegionDateField(
+                            region,
+                            "duration_weeks",
+                            e.target.value,
+                          )
+                        }
+                        style={{ ...styles.dateInput, width: "90px" }}
+                      />
+                    </div>
+                  </div>
+                  <div style={styles.datePanelActions}>
+                    <button
+                      style={styles.datePanelCancel}
+                      onClick={(e) => cancelRegionDatePicker(e, region)}
+                      disabled={pickerLoading}
+                    >
+                      <X size={14} /> Cancel
+                    </button>
+                    <button
+                      style={{
+                        ...styles.datePanelSave,
+                        opacity: pickerLoading ? 0.7 : 1,
+                        cursor: pickerLoading ? "not-allowed" : "pointer",
+                      }}
+                      onClick={(e) => handleRegionDateSave(e, region)}
+                      disabled={pickerLoading}
+                    >
+                      <Check size={14} />
+                      {pickerLoading
+                        ? "Saving..."
+                        : `Apply to ${allInRegion.length} Communities`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {(expanded[region] || searchTerm) && (
               <div style={styles.regionBody}>
@@ -398,7 +594,8 @@ const styles = {
     cursor: "pointer",
   },
   regionHeaderLeft: { display: "flex", alignItems: "center", gap: "12px" },
-  regionHeaderRight: { display: "flex", alignItems: "center", gap: "12px" },
+  regionHeaderRight: { display: "flex", alignItems: "center", gap: "16px" },
+  regionControl: { display: "flex", alignItems: "center", gap: "8px" },
   regionToggleLabel: {
     fontSize: "10px",
     fontWeight: "700",
@@ -412,7 +609,94 @@ const styles = {
     display: "flex",
     alignItems: "center",
   },
+  regionDateBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    padding: "5px 10px",
+    borderRadius: "7px",
+    border: "1px solid #e2e8f0",
+    cursor: "pointer",
+    transition: "all .15s ease",
+  },
   regionName: { fontWeight: "700", fontSize: "16px", color: "#0f172a" },
+
+  // ── Date picker panel ──
+  datePanelWrapper: {
+    borderTop: "1px solid #e2e8f0",
+    backgroundColor: "#f8fafc",
+    padding: "16px 20px",
+  },
+  datePanelInner: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "16px",
+  },
+  datePanelLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "13px",
+    color: "#475569",
+    flex: "1 1 200px",
+  },
+  datePanelTitle: { fontSize: "13px", color: "#334155" },
+  datePanelFields: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+  },
+  dateField: { display: "flex", flexDirection: "column", gap: "4px" },
+  dateFieldLabel: {
+    fontSize: "10px",
+    fontWeight: "700",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+  },
+  dateInput: {
+    padding: "8px 10px",
+    borderRadius: "7px",
+    border: "1px solid #e2e8f0",
+    fontSize: "13px",
+    color: "#1e293b",
+    outline: "none",
+    fontFamily: "inherit",
+  },
+  datePanelActions: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "center",
+    marginLeft: "auto",
+  },
+  datePanelCancel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    padding: "7px 12px",
+    borderRadius: "7px",
+    border: "1px solid #e2e8f0",
+    background: "#fff",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#64748b",
+    cursor: "pointer",
+  },
+  datePanelSave: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    padding: "7px 14px",
+    borderRadius: "7px",
+    border: "none",
+    background: "#198104",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#fff",
+    cursor: "pointer",
+  },
+
   regionBody: { padding: "0 20px 20px 20px" },
   districtBlock: { marginTop: "20px" },
   districtLabel: {
