@@ -501,7 +501,7 @@ const AdminDashboard = ({ user, onLogout, onOpenModal, onOpenExport }) => {
   return (
     <div className="adm-shell">
       <FontLoader />
-      <Navbar onLogout={onLogout} userEmail={user?.email} />
+      <Navbar onLogout={onLogout} userEmail={user?.email} userRole="admin" />
 
       {isRefreshing && (
         <div className="adm-refresh-toast">

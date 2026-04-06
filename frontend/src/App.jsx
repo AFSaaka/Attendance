@@ -163,25 +163,31 @@ function App() {
       } catch (error) {
         if (isCancel(error)) return;
         const status = error.response?.status;
+
+        // ── STUDENT PROTECTION: Students are NEVER auto-logged-out ──
+        // Rural Ghana has unstable internet. A 401/403 from the server
+        // must never kick a student out. They stay in offline mode.
+        if (user?.role === "student") {
+          // Just silently absorb the error — the student stays logged in.
+          // Their localStorage vault keeps them authenticated offline.
+          if (isMounted) setIsCheckingAuth(false);
+          return;
+        }
+
+        // ── ADMIN ONLY: Admins can be logged out by server responses ──
         if (status === 401) {
-          // PHP session expired — try silent re-login using cached vault
-          // This is the "stay logged in" flow: vault exists but server session is gone
           const cachedVault = localStorage.getItem("uds_vault");
           const cachedUser = localStorage.getItem("uds_user");
           if (cachedVault && cachedUser) {
-            // We can't silently re-login without the password, so just
-            // clear the server session state and let the user continue
-            // using offline mode until they next interact with the app
-            // The next manual login will re-establish the server session
             if (isMounted) setIsCheckingAuth(false);
             return;
           }
           handleLogout();
         } else if (status === 403) {
-          // Account deactivated — must logout
+          // Admin account deactivated
           handleLogout();
         }
-        // Network errors (no response) — don't logout, user may be offline
+        // Network errors — don't logout anyone
       } finally {
         if (isMounted) setIsCheckingAuth(false);
       }
@@ -516,153 +522,157 @@ function App() {
                   <Navigate to="/student" replace />
                 )
               ) : (
-                <div style={styles.cardStyle}>
-                  <img
-                    src={udsLogo}
-                    alt="UDS"
-                    style={{
-                      width: "60px",
-                      marginBottom: "10px",
-                      display: "block",
-                      margin: "0 auto 10px",
-                    }}
-                  />
-                  {message.text && (
-                    <div
+                <div style={styles.loginWrap}>
+                  <div style={styles.cardStyle}>
+                    <img
+                      src={udsLogo}
+                      alt="UDS"
                       style={{
-                        ...styles.alertBox,
-                        backgroundColor:
-                          message.type === "error" ? "#fff1f0" : "#f6ffed",
-                        color: message.type === "error" ? "#cf1322" : "#389e0d",
-                        border: `1px solid ${message.type === "error" ? "#ffa39e" : "#b7eb8f"}`,
-                      }}
-                    >
-                      {message.text}
-                    </div>
-                  )}
-
-                  {view === "verify" ? (
-                    <OtpInput
-                      email={formData.email}
-                      onVerify={handleVerifyOtp}
-                      isLoading={isLoading}
-                      onResend={handleResendOtp}
-                      onContinue={() => {
-                        setMessage({
-                          type: "success",
-                          text: "Verified! Please login.",
-                        });
-                        setView("login");
+                        width: "60px",
+                        marginBottom: "10px",
+                        display: "block",
+                        margin: "0 auto 10px",
                       }}
                     />
-                  ) : (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        handleAction();
-                      }}
-                    >
-                      <h2 style={{ margin: "0 0 5px 0" }}>
-                        University for Development Studies
-                      </h2>
-                      <p style={styles.subTitle}>TTFPP Portal</p>
-
-                      {view === "login" ? (
-                        <>
-                          <InputField
-                            name="email"
-                            placeholder="Email Address"
-                            value={formData.email}
-                            onChange={handleChange}
-                          />
-                          <InputField
-                            name="password"
-                            type="password"
-                            placeholder="Password"
-                            value={formData.password}
-                            onChange={handleChange}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          {["uin", "indexNumber", "email"].map((f) => (
-                            <InputField
-                              key={f}
-                              name={f}
-                              placeholder={f.toUpperCase()}
-                              value={formData[f]}
-                              onChange={handleChange}
-                            />
-                          ))}
-                          <InputField
-                            name="password"
-                            type="password"
-                            placeholder="Create Password"
-                            value={formData.password}
-                            onChange={handleChange}
-                          />
-                          <InputField
-                            name="confirmPassword"
-                            type="password"
-                            placeholder="Confirm Password"
-                            value={formData.confirmPassword}
-                            onChange={handleChange}
-                          />
-                          {/* Matching feedback */}
-                          {formData.confirmPassword &&
-                            formData.password !== formData.confirmPassword && (
-                              <p
-                                style={{
-                                  color: "#cf1322",
-                                  fontSize: "11px",
-                                  textAlign: "left",
-                                  margin: "-10px 0 10px 5px",
-                                }}
-                              >
-                                * Passwords do not match
-                              </p>
-                            )}
-                        </>
-                      )}
-
-                      <PrimaryButton
-                        type="submit"
-                        isLoading={isLoading}
-                        disabled={
-                          isLocked ||
-                          (view === "login"
-                            ? !(formData.email && formData.password)
-                            : !isSignupValid)
-                        }
-                      >
-                        {isLocked
-                          ? "Account Locked"
-                          : view === "login"
-                            ? "Login"
-                            : "Create Account"}
-                      </PrimaryButton>
-
-                      <p
+                    {message.text && (
+                      <div
                         style={{
-                          marginTop: "20px",
-                          fontSize: "13px",
-                          color: "#2e2e2e",
+                          ...styles.alertBox,
+                          backgroundColor:
+                            message.type === "error" ? "#fff1f0" : "#f6ffed",
+                          color:
+                            message.type === "error" ? "#cf1322" : "#389e0d",
+                          border: `1px solid ${message.type === "error" ? "#ffa39e" : "#b7eb8f"}`,
                         }}
                       >
-                        {view === "login"
-                          ? "New student? "
-                          : "Already registered? "}
-                        <span
-                          onClick={() =>
-                            setView(view === "login" ? "signup" : "login")
+                        {message.text}
+                      </div>
+                    )}
+
+                    {view === "verify" ? (
+                      <OtpInput
+                        email={formData.email}
+                        onVerify={handleVerifyOtp}
+                        isLoading={isLoading}
+                        onResend={handleResendOtp}
+                        onContinue={() => {
+                          setMessage({
+                            type: "success",
+                            text: "Verified! Please login.",
+                          });
+                          setView("login");
+                        }}
+                      />
+                    ) : (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleAction();
+                        }}
+                      >
+                        <h2 style={{ margin: "0 0 5px 0" }}>
+                          University for Development Studies
+                        </h2>
+                        <p style={styles.subTitle}>TTFPP Portal</p>
+
+                        {view === "login" ? (
+                          <>
+                            <InputField
+                              name="email"
+                              placeholder="Email Address"
+                              value={formData.email}
+                              onChange={handleChange}
+                            />
+                            <InputField
+                              name="password"
+                              type="password"
+                              placeholder="Password"
+                              value={formData.password}
+                              onChange={handleChange}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            {["uin", "indexNumber", "email"].map((f) => (
+                              <InputField
+                                key={f}
+                                name={f}
+                                placeholder={f.toUpperCase()}
+                                value={formData[f]}
+                                onChange={handleChange}
+                              />
+                            ))}
+                            <InputField
+                              name="password"
+                              type="password"
+                              placeholder="Create Password"
+                              value={formData.password}
+                              onChange={handleChange}
+                            />
+                            <InputField
+                              name="confirmPassword"
+                              type="password"
+                              placeholder="Confirm Password"
+                              value={formData.confirmPassword}
+                              onChange={handleChange}
+                            />
+                            {/* Matching feedback */}
+                            {formData.confirmPassword &&
+                              formData.password !==
+                                formData.confirmPassword && (
+                                <p
+                                  style={{
+                                    color: "#cf1322",
+                                    fontSize: "11px",
+                                    textAlign: "left",
+                                    margin: "-10px 0 10px 5px",
+                                  }}
+                                >
+                                  * Passwords do not match
+                                </p>
+                              )}
+                          </>
+                        )}
+
+                        <PrimaryButton
+                          type="submit"
+                          isLoading={isLoading}
+                          disabled={
+                            isLocked ||
+                            (view === "login"
+                              ? !(formData.email && formData.password)
+                              : !isSignupValid)
                           }
-                          style={styles.toggleLink}
                         >
-                          {view === "login" ? "Claim Account" : "Login here"}
-                        </span>
-                      </p>
-                    </form>
-                  )}
+                          {isLocked
+                            ? "Account Locked"
+                            : view === "login"
+                              ? "Login"
+                              : "Create Account"}
+                        </PrimaryButton>
+
+                        <p
+                          style={{
+                            marginTop: "20px",
+                            fontSize: "13px",
+                            color: "#2e2e2e",
+                          }}
+                        >
+                          {view === "login"
+                            ? "New student? "
+                            : "Already registered? "}
+                          <span
+                            onClick={() =>
+                              setView(view === "login" ? "signup" : "login")
+                            }
+                            style={styles.toggleLink}
+                          >
+                            {view === "login" ? "Claim Account" : "Login here"}
+                          </span>
+                        </p>
+                      </form>
+                    )}
+                  </div>
                 </div>
               )
             }
@@ -707,11 +717,16 @@ function App() {
 
 const styles = {
   wrapperStyle: {
+    width: "100%",
+    minHeight: "100dvh",
+    backgroundColor: "#f0f2f5",
+  },
+  loginWrap: {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    width: "100vw",
     minHeight: "100dvh",
+    width: "100%",
     backgroundColor: "#f0f2f5",
   },
   offlineBanner: {

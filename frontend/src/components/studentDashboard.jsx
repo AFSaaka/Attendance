@@ -121,16 +121,16 @@ const StudentDashboard = ({
         }
       } catch (err) {
         if (isCancel(err)) return;
-        if (err.response?.status === 401) onLogout();
-        else if (!navigator.onLine) {
-          const cached = localStorage.getItem(`placement_${user.uin}`);
-          if (cached) setPlacement(JSON.parse(cached));
-        }
+        // ── STUDENT PROTECTION: Never auto-logout on any server error ──
+        // 401 means PHP session expired — student stays logged in via localStorage.
+        // Always fall back to cached placement data regardless of error type.
+        const cached = localStorage.getItem(`placement_${user.uin}`);
+        if (cached) setPlacement(JSON.parse(cached));
       } finally {
         setLoadingPlacement(false);
       }
     },
-    [user?.uin, onLogout],
+    [user?.uin],
   );
 
   // 4. EFFECTS (Cache restore + API fetch merged)
@@ -317,7 +317,7 @@ const StudentDashboard = ({
 
   return (
     <div style={styles.container}>
-      <Navbar onLogout={onLogout} userEmail={user?.email} />
+      <Navbar onLogout={onLogout} userEmail={user?.email} userRole="student" />
       {isSyncing && (
         <div style={styles.syncOverlay}>
           <RefreshCw size={14} className="spin-animation" /> Syncing offline
