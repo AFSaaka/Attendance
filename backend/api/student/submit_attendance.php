@@ -55,23 +55,7 @@ try {
         }
         
         $captured_at = $data['captured_at'] ?? date('Y-m-d H:i:s');
-        
-        // ── PHONE TIME MANIPULATION GUARD ──
-        // Always use SERVER date for the attendance record date.
-        // The client-supplied captured_at is stored for audit purposes only.
-        // This prevents students from changing their phone time to attend on 
-        // a different day (past or future).
-        $att_date = date('Y-m-d'); // Server date in Africa/Accra timezone
-        
-        // Detect significant client/server time mismatch (> 6 hours)
-        // This flags potential time manipulation attempts
-        $client_ts  = strtotime($captured_at);
-        $server_ts  = time();
-        $time_drift = abs($server_ts - $client_ts);
-        if ($time_drift > 21600) { // 6 hours in seconds
-            $is_suspicious = true;
-            $reason = "Time drift detected: " . round($time_drift / 3600, 1) . " hours";
-        }
+        $att_date = date('Y-m-d', strtotime($captured_at));
         
         // LOGIC: If incoming data is flagged offline, we mark DB as synced+offline
         $incoming_offline = (isset($data['is_offline']) && ($data['is_offline'] === true || $data['is_offline'] === 'true'));

@@ -14,31 +14,13 @@ const instance = axios.create({
  * - Survive page refreshes (token from auth/verify)
  * - Work with offline sync (included in _csrf body param)
  */
-// In-memory CSRF token — primary store
 let csrfToken = null;
-
-// On module load, restore from sessionStorage if available.
-// sessionStorage persists across page refreshes within the same tab session,
-// so when a student reopens the PWA, the token is immediately available
-// without waiting for verifySession to resolve.
-const _stored = sessionStorage.getItem("_csrf_t");
-if (_stored) csrfToken = _stored;
 
 export const setCsrfToken = (token) => {
   csrfToken = token;
-  if (token) {
-    sessionStorage.setItem("_csrf_t", token);
-  } else {
-    sessionStorage.removeItem("_csrf_t");
-  }
 };
 
 export const getCsrfToken = () => {
-  // Always check sessionStorage as fallback in case memory was cleared
-  if (!csrfToken) {
-    const stored = sessionStorage.getItem("_csrf_t");
-    if (stored) csrfToken = stored;
-  }
   return csrfToken;
 };
 
