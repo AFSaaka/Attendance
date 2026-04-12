@@ -67,45 +67,21 @@ export const syncOfflineAttendance = async () => {
   } catch (err) {
     console.error("Sync failed:", err.response?.data || err.message);
 
-    // Handle retries: increment retryCount for each failed record
+    // Increment retryCount for tracking purposes (monitoring only)
     const currentQueue = JSON.parse(
       localStorage.getItem("pending_attendance") || "[]",
     );
 
     const updatedQueue = currentQueue.map((record) => ({
       ...record,
-      retryCount: record.retryCount + 1,
+      retryCount: (record.retryCount || 0) + 1,
     }));
 
-    // Separate records: remove those that exceeded max retries, keep others
-    const recordsToRemove = updatedQueue.filter(
-      (record) => record.retryCount >= 3,
-    );
-    const recordsToKeep = updatedQueue.filter(
-      (record) => record.retryCount < 3,
-    );
-
-    // Log expired records with console.error
-    recordsToRemove.forEach((record) => {
-      console.error(
-        `Offline record abandoned (exceeded 3 retries): ${record.offline_id}`,
-        record,
-      );
-    });
-
-    // Save remaining records back to localStorage
-    if (recordsToKeep.length > 0) {
-      localStorage.setItem("pending_attendance", JSON.stringify(recordsToKeep));
-    } else {
-      localStorage.removeItem("pending_attendance");
-    }
-
-    // Exponential backoff delay before returning (only if records remain)
-    if (recordsToKeep.length > 0) {
-      const maxRetryCount = Math.max(...recordsToKeep.map((r) => r.retryCount));
-      const delay = Math.pow(2, maxRetryCount) * 1000;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+    // ── CRITICAL: NEVER permanently drop offline attendance records ──
+    // These represent real attendance that a student physically submitted.
+    // Dropping them due to network/CSRF failures would falsely mark them absent.
+    // Records are only removed once the SERVER confirms successful sync.
+    localStorage.setItem("pending_attendance", JSON.stringify(updatedQueue));
 
     return { success: false, message: "Network error" };
   }

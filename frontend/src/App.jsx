@@ -202,15 +202,27 @@ function App() {
   useEffect(() => {
     const handleOnline = async () => {
       setIsOffline(false);
-      // Refresh CSRF token when coming back online
-      // This ensures sync can proceed immediately with a valid token
+      // Refresh CSRF token when coming back online.
+      // Try auth/csrf first (fast), fall back to auth/verify (re-establishes session).
+      // This ensures students coming back after days/weeks get a valid token immediately.
       try {
         const res = await axios.get("auth/csrf");
         if (res.data?.csrf_token) {
           setCsrfToken(res.data.csrf_token);
+          return;
         }
       } catch {
-        // Silently ignore — verifySession will handle token refresh
+        // auth/csrf failed — PHP session may have expired on server restart
+      }
+      // Fallback: call verify which will create a new session if needed
+      try {
+        const res = await axios.get("auth/verify");
+        if (res.data?.csrf_token) {
+          setCsrfToken(res.data.csrf_token);
+        }
+      } catch {
+        // Both failed — token stays as-is from sessionStorage or null
+        // The student's POST will still carry the old token from sessionStorage
       }
     };
     const handleOffline = () => setIsOffline(true);

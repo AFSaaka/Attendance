@@ -168,12 +168,25 @@ const StudentDashboard = ({
     const runSync = async () => {
       if (isSyncingRef.current || !navigator.onLine) return;
 
-      // Don't sync until CSRF token is available
-      if (!getCsrfToken()) return;
-
       // Throttle sync attempts: skip if less than 10 seconds since last attempt
       const timeSinceLastAttempt = Date.now() - lastSyncAttemptRef.current;
       if (timeSinceLastAttempt < 10000) return;
+
+      // Ensure CSRF token is fresh before syncing.
+      // If none in memory/sessionStorage, fetch it first.
+      if (!getCsrfToken()) {
+        try {
+          const tokenRes = await axios.get("auth/verify");
+          if (tokenRes.data?.csrf_token) {
+            setCsrfToken(tokenRes.data.csrf_token);
+          }
+        } catch {
+          // Can't get token — defer sync to next online event
+          return;
+        }
+        // If still no token after fetch, abort
+        if (!getCsrfToken()) return;
+      }
 
       lastSyncAttemptRef.current = Date.now();
 
@@ -296,17 +309,43 @@ const StudentDashboard = ({
       setAttendanceStatus({ message: resp.data.message, type: "error" });
       return false;
     } catch (err) {
-      // If offline, we still save, but we mark it for manual review on the dashboard
-      if (!err.response) {
+      // ── CRITICAL: Save offline for ANY server/network failure ──
+      // No internet: obvious save-offline case
+      // 401 (session expired): PHP session died but student is legitimately logged in
+      // 403 (CSRF invalid): token race condition on tab reopen
+      // 500 (server error): transient backend issue
+      // In all cases, the student IS physically present — save and sync later.
+      if (
+        !err.response ||
+        err.response.status === 401 ||
+        err.response.status === 403 ||
+        err.response.status >= 500
+      ) {
         saveAttendanceOffline({ ...data, is_offline: true });
         setHasSignedToday(true);
+
+        // Also refresh the CSRF token for the next attempt
+        try {
+          const tokenRes = await axios.get("auth/verify");
+          if (tokenRes.data?.csrf_token) {
+            setCsrfToken(tokenRes.data.csrf_token);
+          }
+        } catch {
+          /* silently ignore */
+        }
+
         setAttendanceStatus({
-          message: "Saved offline. Will sync later.",
+          message: !err.response
+            ? "Saved offline. Will sync automatically when online."
+            : "Saved for sync. Your attendance is recorded.",
           type: "info",
         });
         return true;
       }
-      setAttendanceStatus({ message: "Submission failed", type: "error" });
+      setAttendanceStatus({
+        message: err.response?.data?.message || "Submission failed",
+        type: "error",
+      });
       return false;
     } finally {
       setIsSubmitting(false);

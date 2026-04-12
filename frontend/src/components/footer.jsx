@@ -5,7 +5,7 @@ const Footer = () => {
         &copy; {new Date().getFullYear()} University for Development Studies
       </p>
       <p className="mt-1 text-[11px]">
-        Third Trimester Field Practical Programme (TTFPP) Management System
+        Third Trimester Field Practical Programmes Management System
       </p>
     </footer>
   );
