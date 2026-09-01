@@ -6,7 +6,7 @@ $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 $allowed_origins = [
     "http://localhost:5173",
-    "https://ttfpp-attendance.netlify.app"
+    "https://uam-ttfpp.netlify.app"
 ];
 
 if (in_array($origin, $allowed_origins)) {

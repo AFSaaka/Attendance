@@ -1,0 +1,9 @@
+[build]
+  base    = "frontend"
+  command = "npm run build"
+  publish = "frontend/dist" # Change to frontend/build if using Create React App
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Content-Type = "text/javascript"
