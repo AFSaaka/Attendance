@@ -39,6 +39,11 @@ try {
         throw new Exception("Passwords do not match.");
     }
 
+    $passwordError = validate_password_policy($password);
+    if ($passwordError !== null) {
+        throw new Exception($passwordError);
+    }
+
     // 6. Database Logic (Matching your Debug Flow)
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 

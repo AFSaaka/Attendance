@@ -314,10 +314,10 @@ function App() {
         setMessage({ type: "error", text: "Passwords do not match!" });
         return;
       }
-      if (formData.password.length < 6) {
+      if (formData.password.length < 8) {
         setMessage({
           type: "error",
-          text: "Password must be at least 6 characters.",
+          text: "Password must be at least 8 characters.",
         });
         return;
       }
@@ -490,6 +490,7 @@ function App() {
       }
       return false;
     } catch (error) {
+      console.error("Request failed:", error);
       return false;
     } finally {
       setIsLoading(false);

@@ -1,6 +1,7 @@
 <?php
 // backend/api/auth/reset-password.php
 require_once __DIR__ . '/../common_auth.php';
+require_once __DIR__ . '/../../utils/validators.php';
 
 header("Content-Type: application/json");
 
@@ -14,9 +15,10 @@ if (!isset($_SESSION['user_id'])) {
 $data = json_decode(file_get_contents('php://input'), true);
 $newPassword = $data['password'] ?? '';
 
-if (strlen($newPassword) < 8) {
+$passwordError = validate_password_policy($newPassword);
+if ($passwordError !== null) {
     http_response_code(400);
-    echo json_encode(["status" => "error", "message" => "Password must be at least 8 characters long."]);
+    echo json_encode(["status" => "error", "message" => $passwordError]);
     exit;
 }
 

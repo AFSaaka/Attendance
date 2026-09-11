@@ -31,6 +31,20 @@ function validate_email($email) {
 }
 
 /**
+ * Single source of truth for password policy.
+ * Used at registration AND at reset — do not duplicate this check inline
+ * anywhere else, or it will drift again.
+ * @param string $password
+ * @return string|null Null if valid, otherwise a user-facing error message.
+ */
+function validate_password_policy($password) {
+    if (!is_string($password) || strlen($password) < 8) {
+        return "Password must be at least 8 characters long.";
+    }
+    return null;
+}
+
+/**
  * Validates date format (YYYY-MM-DD)
  * @param string $date
  * @return bool
