@@ -62,16 +62,26 @@ try {
         $db_is_offline = $incoming_offline ? 'true' : 'false';
         $db_synced = $incoming_offline ? 'true' : 'false';
 
+        // Ownership check: the enrollment_id must actually belong to the
+        // logged-in student. Without the "u.id = :uid" condition, any
+        // authenticated student could submit attendance against any
+        // enrollment_id in the system, not just their own.
         $metaSql = "SELECT c.id as community_id, c.latitude as c_lat, c.longitude as c_lng, 
                            c.coordinate_check, se.session_id
                     FROM public.student_enrollments se
                     JOIN public.communities c ON se.community_id = c.id
-                    WHERE se.id = :eid";
+                    JOIN public.users u ON u.student_id = se.registry_id
+                    WHERE se.id = :eid AND u.id = :uid";
         $metaStmt = $pdo->prepare($metaSql);
-        $metaStmt->execute(['eid' => $data['enrollment_id'] ?? null]);
+        $metaStmt->execute([
+            'eid' => $data['enrollment_id'] ?? null,
+            'uid' => $currentUser['id']
+        ]);
         $meta = $metaStmt->fetch();
 
-        if (!$meta) continue;
+        // No match means either a bad enrollment_id or one that doesn't
+        // belong to this student — same outcome either way: skip it.
+        if (!$meta) { $skippedCount++; continue; }
 
         $is_suspicious = ($data['is_mocked'] ?? false) || ($u_acc > 0 && $u_acc < 1);
         $reason = $is_suspicious ? "Spoofing detected" : null;

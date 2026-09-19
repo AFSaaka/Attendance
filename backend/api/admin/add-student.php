@@ -72,14 +72,37 @@ try {
         throw new Exception("Registry record could not be created or found.");
     }
 
+    // 2b. RESOLVE community_id — same lookup bulk-upload.php already does.
+    // Without this, a manually-added student's enrollment has community_id
+    // NULL, which silently breaks their GPS check when they try to submit
+    // attendance later.
+    $community_id = null;
+    if (!empty($data['community'])) {
+        $commStmt = $pdo->prepare("
+            SELECT id FROM public.communities
+            WHERE is_deleted = false
+              AND LOWER(TRIM(name)) = LOWER(TRIM(?))
+              AND LOWER(TRIM(district)) = LOWER(TRIM(?))
+              AND LOWER(TRIM(region)) = LOWER(TRIM(?))
+            LIMIT 1
+        ");
+        $commStmt->execute([
+            $data['community'] ?? '',
+            $data['district']  ?? '',
+            $data['region']    ?? ''
+        ]);
+        $community_id = $commStmt->fetchColumn() ?: null;
+    }
+
     // 3. TABLE 2: ENROLLMENT UPSERT
     $stmtEnr = $pdo->prepare("
         INSERT INTO public.student_enrollments 
-        (registry_id, session_id, level, program, region, district, community, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        (registry_id, session_id, level, program, region, district, community, community_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
         ON CONFLICT (registry_id, session_id) DO UPDATE SET 
-            level = EXCLUDED.level,
-            updated_at = NOW()
+            level        = EXCLUDED.level,
+            community_id = EXCLUDED.community_id,
+            updated_at   = NOW()
     ");
     $stmtEnr->execute([
         $registry_id,
@@ -88,7 +111,8 @@ try {
         $data['program']   ?? null,
         $data['region']    ?? null,
         $data['district']  ?? null,
-        $data['community'] ?? null
+        $data['community'] ?? null,
+        $community_id
     ]);
 
     // 4. AUDIT LOGGING
@@ -106,7 +130,12 @@ try {
     ]);
 
     $pdo->commit();
-    echo json_encode(["status" => "success", "message" => "Record saved successfully"]);
+
+    $response = ["status" => "success", "message" => "Record saved successfully"];
+    if (!empty($data['community']) && !$community_id) {
+        $response["warning"] = "Community '{$data['community']}' wasn't matched to a record in the communities table — this student was enrolled without a location link, so their GPS check-in won't work until an admin fixes this.";
+    }
+    echo json_encode($response);
 
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
